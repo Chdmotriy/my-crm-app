@@ -1,1 +1,5 @@
-streamlit, pandas, psycopg2-binary, plotly, icalendar
+streamlit
+pandas
+psycopg2-binary
+plotly
+icalendar
