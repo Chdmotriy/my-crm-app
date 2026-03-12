@@ -10,7 +10,7 @@ import io
 # --- 1. НАСТРОЙКИ И ПАРОЛЬ ---
 st.set_page_config(page_title="CRM Рассрочки & Учет", layout="wide")
 
-ADMIN_PASSWORD = "ВАШ_ПАРОЛЬ" # ЗАМЕНИТЕ НА СВОЙ ПАРОЛЬ
+ADMIN_PASSWORD = "D17v01ch89!" # ЗАМЕНИТЕ НА СВОЙ ПАРОЛЬ
 
 with st.sidebar:
     st.title("🔐 Доступ")
