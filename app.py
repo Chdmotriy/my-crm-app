@@ -106,42 +106,25 @@ with tab_reestr:
 
 # Вкладка 4: Карточка (С возможностью редактирования)
 with tab_details:
-    # 1. Получаем список клиентов
     cllist = pd.read_sql("SELECT id, name FROM clients ORDER BY name", engine)
     
     if not cllist.empty:
         selc = st.selectbox("👤 Выбери клиента:", cllist['name'], key="detsel")
         cid = int(cllist[cllist['name'] == selc]['id'].iloc[0])
         
-        col1, col2 = st.columns([2, 1])
+        st.subheader(f"**{selc}**")
         
-        with col1:
-            st.subheader(f"**{selc}**")
-            
-            # 2. Total amount БЕЗ conn!
-            total_df = pd.read_sql(f"SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE clientid = {cid}", engine)
-            total = float(total_df['total'].iloc[0]) if not total_df.empty else 0
-            
-            # 3. Платежи БЕЗ conn!
-            payments_df = pd.read_sql(f"SELECT date, amount, status FROM schedule WHERE clientid = {cid} ORDER BY date DESC LIMIT 5", engine)
-            
-            # 4. Метрики
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("💰 Всего оплачено", f"{total:,.0f} ₽")
-            with col_b:
-                st.metric("📅 Платежей", len(payments_df))
-            
-            # 5. Таблица платежей
-            if not payments_df.empty:
-                st.subheader("💳 Последние платежи")
-                st.dataframe(payments_df, use_container_width=True, hide_index=True)
-            else:
-                st.info("ℹ️ Нет платежей")
+        # ✅ ТОЧНО как в твоем tab_reestr!
+        payments_df = pd.read_sql(f"SELECT date, amount, status FROM schedule WHERE clientid = {cid} ORDER BY date DESC LIMIT 5", engine)
         
-        with col2:
-            st.subheader("📎 Файлы")
-            st.info("⏳ В разработке")
+        # ✅ ПРОСТАЯ сумма без COALESCE
+        total = payments_df['amount'].sum()
+        
+        col1, col2 = st.columns(2)
+        col1.metric("💰 Всего", f"{total:,.0f} ₽")
+        col2.metric("📅 Платежей", len(payments_df))
+        
+        st.dataframe(payments_df, use_container_width=True)
 
 
 
