@@ -48,12 +48,12 @@ tab_main, tab_reestr, tab_details, tab_add = st.tabs([
 with tab_main:
     with engine.connect() as conn:
         inc_df = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM schedule", conn)
-        total_revenue = float(inc_df['t'].iloc[0]) if not pd.isna(inc_df['t'].iloc[0]) else 0.0
-        paid_revenue = float(inc_df['p'].iloc[0]) if not pd.isna(inc_df['p'].iloc[0]) else 0.0
+        total_revenue = float(inc_df['t'].fillna(0).iloc[0])
+        paid_revenue = float(inc_df['p'].fillna(0).iloc[0])
 
         exp_df = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM expenses", conn)
-        total_expenses = float(exp_df['t'].iloc[0]) if not pd.isna(exp_df['t'].iloc[0]) else 0.0
-        paid_expenses = float(exp_df['p'].iloc[0]) if not pd.isna(exp_df['p'].iloc[0]) else 0.0
+        total_expenses = float(exp_df['t'].fillna(0).iloc[0])
+        paid_expenses = float(exp_df['p'].fillna(0).iloc[0])
     
     st.subheader("💰 Финансовый результат (Все время)")
     c1, c2, c3, c4 = st.columns(4)
@@ -64,21 +64,16 @@ with tab_main:
     
     st.divider()
     
-    # График по годам
     with engine.connect() as conn:
         years_df = pd.read_sql("SELECT DISTINCT EXTRACT(YEAR FROM date) as year FROM schedule ORDER BY year DESC", conn)
     available_years = [int(y) for y in years_df['year'].tolist()] if not years_df.empty else [datetime.now().year]
     sel_year = st.selectbox("📅 Детализация за год", available_years)
     
-    # ИСПРАВЛЕННЫЙ СПОСОБ ПОЛУЧЕНИЯ ДАННЫХ ДЛЯ ГРАФИКА
     with engine.connect() as conn:
-        # Получаем доходы по месяцам
         rev_m = pd.read_sql(text("SELECT TO_CHAR(date, 'Month') as month, TO_CHAR(date, 'MM') as m_num, SUM(amount) as revenue FROM schedule WHERE EXTRACT(YEAR FROM date) = :y GROUP BY month, m_num"), conn, params={"y": sel_year})
-        # Получаем расходы по месяцам
         exp_m = pd.read_sql(text("SELECT TO_CHAR(date, 'Month') as month, TO_CHAR(date, 'MM') as m_num, SUM(amount) as expense FROM expenses WHERE EXTRACT(YEAR FROM date) = :y GROUP BY month, m_num"), conn, params={"y": sel_year})
         
     if not rev_m.empty:
-        # Объединяем таблицы доходов и расходов в одну
         chart_data = pd.merge(rev_m, exp_m, on=['month', 'm_num'], how='outer').fillna(0).sort_values('m_num')
         st.plotly_chart(px.bar(chart_data, x='month', y=['revenue', 'expense'], barmode='group', 
                              title=f"Доходы vs Расходы ({sel_year})",
@@ -95,11 +90,15 @@ with tab_reestr:
         df_exp_sum = pd.read_sql("SELECT client_id, SUM(amount) as total_exp FROM expenses GROUP BY client_id", conn)
     
     if not df_clients.empty:
-        df_r = pd.merge(df_clients, df_exp_sum, left_on='id', right_on='client_id', how='left').fillna(0)
+        df_r = pd.merge(df_clients, df_exp_sum, left_on='id', right_on='client_id', how='left')
+        df_r['total_exp'] = df_r['total_exp'].fillna(0) # Убираем пустые значения
         df_r['Прибыль'] = df_r['total_amount'] - df_r['total_exp']
-        st.dataframe(df_r[['name', 'total_amount', 'total_exp', 'Прибыль']].rename(columns={
+        
+        # Формируем итоговую таблицу
+        final_df = df_r[['name', 'total_amount', 'total_exp', 'Прибыль']].rename(columns={
             'name': 'Клиент', 'total_amount': 'Выручка', 'total_exp': 'Затраты'
-        }).style.format("{:,.0f} ₽"), use_container_width=True)
+        })
+        st.dataframe(final_df.style.format("{:,.0f} ₽"), use_container_width=True)
 
 # --- ВКЛАДКА: КАРТОЧКА И ЗАТРАТЫ ---
 with tab_details:
