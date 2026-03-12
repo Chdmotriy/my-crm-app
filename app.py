@@ -128,32 +128,38 @@ with tab_add:
         
         if st.form_submit_button("🚀 Создать клиента и график"):
             if n:
-                with engine.connect() as conn:
-                    # 1. Добавляем клиента и получаем его ID
-                    res = conn.execute(
-                        text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n, :t, :m, :d) RETURNING id"),
-                        {"n": n, "t": t, "m": int(m), "d": d}
-                    )
-                    new_id = res.fetchone()[0] # Берем ID созданного клиента
-                    
-                    # 2. Генерируем график платежей
-                    monthly_amount = t / m
-                    for i in range(int(m)):
-                        # Логика сдвига месяцев
-                        month_offset = (d.month + i - 1) % 12 + 1
-                        year_offset = d.year + (d.month + i - 1) // 12
-                        pay_date = d.replace(year=year_offset, month=month_offset)
-                        
-                        # Запись в таблицу schedule (ИСПРАВЛЕНО: параметры :id, :date, :amount)
-                        conn.execute(
-                            text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :date, :amount, :status)"),
-                            {"id": new_id, "date": pay_date, "amount": monthly_amount, "status": "Ожидается"}
+                try:
+                    with engine.connect() as conn:
+                        # 1. Добавляем клиента
+                        res = conn.execute(
+                            text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n, :t, :m, :d) RETURNING id"),
+                            {"n": n, "t": t, "m": int(m), "d": d}
                         )
-                    conn.commit()
-                st.success(f"Клиент {n} успешно добавлен в облако!")
-                st.rerun()
+                        # Получаем ID (совместимо с разными версиями SQLAlchemy)
+                        new_id = res.scalar() 
+                        
+                        # 2. Генерируем график платежей (Безопасный расчет дат)
+                        monthly_amount = t / m
+                        current_pay_date = d
+                        
+                        for i in range(int(m)):
+                            # Запись текущего платежа
+                            conn.execute(
+                                text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :date, :amount, :status)"),
+                                {"id": new_id, "date": current_pay_date, "amount": monthly_amount, "status": "Ожидается"}
+                            )
+                            # Сдвигаем дату на 30 дней для следующего шага
+                            from datetime import timedelta
+                            current_pay_date = current_pay_date + timedelta(days=30)
+                            
+                        conn.commit()
+                    st.success(f"Клиент {n} успешно добавлен!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Ошибка при сохранении: {e}")
             else:
                 st.error("Пожалуйста, введите ФИО клиента.")
+
 
 
 if st.sidebar.button("🗑 Очистить базу (Все данные)"):
