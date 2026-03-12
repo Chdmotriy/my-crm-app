@@ -106,12 +106,12 @@ with tab_reestr:
 
 # Вкладка 4: Карточка (С возможностью редактирования)
 with tab_details:
-    # ✅ ОДНО соединение для ВСЕГО блока
+    # Список клиентов
     with engine.connect() as conn:
         cllist = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
     
     if not cllist.empty:
-        selc = st.selectbox("👤 Выберите клиента:", cllist['name'], key="detsel")
+        selc = st.selectbox("👤 Выбери клиента:", cllist['name'], key="detsel")
         cid = int(cllist[cllist['name'] == selc]['id'].iloc[0])
         
         col1, col2 = st.columns([2, 1])
@@ -119,42 +119,33 @@ with tab_details:
         with col1:
             st.subheader(f"**{selc}**")
             
-            # ✅ Новое соединение для данных клиента
+            # ✅ Данные клиента БЕЗ text()
             with engine.connect() as conn:
-                client_row = pd.read_sql(
-                    text("SELECT * FROM clients WHERE id = :id"), 
-                    conn, params={"id": cid}
-                )
+                client_row = pd.read_sql(f"SELECT * FROM clients WHERE id = {cid}", conn)
                 client_data = client_row.iloc[0].to_dict() if not client_row.empty else {}
             
-            # ✅ Метрики с одним новым соединением
+            # ✅ Total из schedule БЕЗ text()
             with engine.connect() as conn:
-                total_sql = pd.read_sql(
-                    text("SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE clientid = :id"), 
-                    conn, params={"id": cid}
-                )
-                total_amount = total_sql['total'].iloc[0] if not total_sql.empty else 0
+                total_sql = pd.read_sql(f"SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE clientid = {cid}", conn)
+                total_amount = float(total_sql['total'].iloc[0]) if not total_sql.empty else 0
                 
-                payments = pd.read_sql(
-                    text("SELECT date, amount, status FROM schedule WHERE clientid = :id ORDER BY date DESC LIMIT 5"),
-                    conn, params={"id": cid}
-                )
+                payments = pd.read_sql(f"SELECT date, amount, status FROM schedule WHERE clientid = {cid} ORDER BY date DESC LIMIT 5", conn)
             
-            # Показываем данные
-            with st.expander("📊 Основная информация", expanded=True):
+            # Метрики
+            with st.expander("📊 Информация", expanded=True):
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.metric("💰 Всего оплачено", f"{total_amount:,.0f} ₽")
                 with col_b:
                     st.metric("📅 С", client_data.get('startdate', 'Не указано'))
-                    st.metric("📈 Месяцев", client_data.get('months', 0))
+                    st.metric("📊 Месяцев", client_data.get('months', 0))
             
-            st.subheader("💳 Последние 5 платежей")
+            st.subheader("💳 Последние платежи")
             st.dataframe(payments, use_container_width=True, hide_index=True)
         
         with col2:
             st.subheader("📎 Файлы")
-            st.info("👷 Функция в разработке")
+            st.info("⏳ В разработке")
 
 
 
