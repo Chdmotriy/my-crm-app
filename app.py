@@ -10,7 +10,7 @@ import io
 # --- 1. НАСТРОЙКИ И ПАРОЛЬ ---
 st.set_page_config(page_title="CRM Profit Pro", layout="wide")
 
-ADMIN_PASSWORD = "D17v01ch89!" # ЗАМЕНИТЕ НА СВОЙ
+ADMIN_PASSWORD = "ВАШ_ПАРОЛЬ" # ЗАМЕНИТЕ НА СВОЙ
 
 with st.sidebar:
     st.title("🔐 Доступ")
@@ -47,12 +47,10 @@ tab_main, tab_reestr, tab_details, tab_add = st.tabs([
 # --- ВКЛАДКА: АНАЛИТИКА ---
 with tab_main:
     with engine.connect() as conn:
-        # Безопасное извлечение доходов
         inc_df = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM schedule", conn)
         total_revenue = float(inc_df['t'].iloc[0]) if not pd.isna(inc_df['t'].iloc[0]) else 0.0
         paid_revenue = float(inc_df['p'].iloc[0]) if not pd.isna(inc_df['p'].iloc[0]) else 0.0
 
-        # Безопасное извлечение расходов
         exp_df = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM expenses", conn)
         total_expenses = float(exp_df['t'].iloc[0]) if not pd.isna(exp_df['t'].iloc[0]) else 0.0
         paid_expenses = float(exp_df['p'].iloc[0]) if not pd.isna(exp_df['p'].iloc[0]) else 0.0
@@ -61,12 +59,8 @@ with tab_main:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Общая выручка", f"{total_revenue:,.0f} ₽")
     c2.metric("Всего затрат", f"{total_expenses:,.0f} ₽", delta=f"-{total_expenses:,.0f}", delta_color="inverse")
-    
-    profit = total_revenue - total_expenses
-    c3.metric("Чистая прибыль (план)", f"{profit:,.0f} ₽")
-    
-    real_cash = paid_revenue - paid_expenses
-    c4.metric("Деньги в кассе (факт)", f"{real_cash:,.0f} ₽")
+    c3.metric("Чистая прибыль (план)", f"{(total_revenue - total_expenses):,.0f} ₽")
+    c4.metric("Деньги в кассе (факт)", f"{(paid_revenue - paid_expenses):,.0f} ₽")
     
     st.divider()
     
@@ -76,35 +70,36 @@ with tab_main:
     available_years = [int(y) for y in years_df['year'].tolist()] if not years_df.empty else [datetime.now().year]
     sel_year = st.selectbox("📅 Детализация за год", available_years)
     
+    # ИСПРАВЛЕННЫЙ СПОСОБ ПОЛУЧЕНИЯ ДАННЫХ ДЛЯ ГРАФИКА
     with engine.connect() as conn:
-        chart_data = pd.read_sql(text("""
-            SELECT TO_CHAR(date, 'Month') as month, 
-            SUM(amount) as revenue,
-            (SELECT SUM(amount) FROM expenses WHERE TO_CHAR(date, 'Month') = TO_CHAR(s.date, 'Month') AND EXTRACT(YEAR FROM date) = :y) as expense,
-            TO_CHAR(date, 'MM') as month_num
-            FROM schedule s WHERE EXTRACT(YEAR FROM date) = :y 
-            GROUP BY month, month_num ORDER BY month_num
-        """), conn, params={"y": sel_year})
+        # Получаем доходы по месяцам
+        rev_m = pd.read_sql(text("SELECT TO_CHAR(date, 'Month') as month, TO_CHAR(date, 'MM') as m_num, SUM(amount) as revenue FROM schedule WHERE EXTRACT(YEAR FROM date) = :y GROUP BY month, m_num"), conn, params={"y": sel_year})
+        # Получаем расходы по месяцам
+        exp_m = pd.read_sql(text("SELECT TO_CHAR(date, 'Month') as month, TO_CHAR(date, 'MM') as m_num, SUM(amount) as expense FROM expenses WHERE EXTRACT(YEAR FROM date) = :y GROUP BY month, m_num"), conn, params={"y": sel_year})
         
-    if not chart_data.empty:
+    if not rev_m.empty:
+        # Объединяем таблицы доходов и расходов в одну
+        chart_data = pd.merge(rev_m, exp_m, on=['month', 'm_num'], how='outer').fillna(0).sort_values('m_num')
         st.plotly_chart(px.bar(chart_data, x='month', y=['revenue', 'expense'], barmode='group', 
                              title=f"Доходы vs Расходы ({sel_year})",
-                             labels={'value': 'Сумма (₽)', 'month': 'Месяц', 'variable': 'Тип'}), use_container_width=True)
+                             labels={'value': 'Сумма (₽)', 'month': 'Месяц', 'variable': 'Тип'},
+                             color_discrete_map={'revenue': '#00CC96', 'expense': '#EF553B'}), use_container_width=True)
     else:
         st.info("Данных за этот год пока нет.")
 
 # --- ВКЛАДКА: РЕЕСТР ---
 with tab_reestr:
     search = st.text_input("🔍 Найти клиента", "")
-    query = text("""
-        SELECT c.name as "Клиент", c.total_amount as "Выручка", 
-        COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0) as "Затраты",
-        (c.total_amount - COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0)) as "Прибыль"
-        FROM clients c WHERE c.name ILIKE :n ORDER BY c.name ASC
-    """)
     with engine.connect() as conn:
-        df_r = pd.read_sql(query, conn, params={"n": f"%{search}%"})
-    st.dataframe(df_r.style.format("{:,.0f} ₽", subset=["Выручка", "Затраты", "Прибыль"]), use_container_width=True)
+        df_clients = pd.read_sql(text("SELECT id, name, total_amount FROM clients WHERE name ILIKE :n ORDER BY name ASC"), conn, params={"n": f"%{search}%"})
+        df_exp_sum = pd.read_sql("SELECT client_id, SUM(amount) as total_exp FROM expenses GROUP BY client_id", conn)
+    
+    if not df_clients.empty:
+        df_r = pd.merge(df_clients, df_exp_sum, left_on='id', right_on='client_id', how='left').fillna(0)
+        df_r['Прибыль'] = df_r['total_amount'] - df_r['total_exp']
+        st.dataframe(df_r[['name', 'total_amount', 'total_exp', 'Прибыль']].rename(columns={
+            'name': 'Клиент', 'total_amount': 'Выручка', 'total_exp': 'Затраты'
+        }).style.format("{:,.0f} ₽"), use_container_width=True)
 
 # --- ВКЛАДКА: КАРТОЧКА И ЗАТРАТЫ ---
 with tab_details:
@@ -113,7 +108,7 @@ with tab_details:
     
     if not cl_list.empty:
         sel_c = st.selectbox("Выберите клиента", cl_list['name'])
-        c_id = int(cl_list[cl_list['name'] == sel_c]['id'].values[0])
+        c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
         
         col_pay, col_exp = st.tabs(["💵 График оплат (Доход)", "💸 Затраты по клиенту (Расход)"])
         
@@ -161,7 +156,7 @@ with tab_add:
             if n:
                 with engine.connect() as conn:
                     res = conn.execute(text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n,:t,:m,:d) RETURNING id"), 
-                                     {"n":n,"t":t,"m":m,"d":d})
+                                     {"n":n,"t":t,"m":int(m),"d":d})
                     cid = res.scalar()
                     steps = 1 if type_p == "Сразу" else int(m)
                     for i in range(steps):
@@ -170,7 +165,7 @@ with tab_add:
                     conn.commit()
                 st.rerun()
 
-if st.sidebar.button("🗑 Сбросить базу"):
+if st.sidebar.button("🗑 Сбросить базу (Удалит ВСЁ)"):
     with engine.connect() as conn:
         conn.execute(text("DROP TABLE IF EXISTS clients; DROP TABLE IF EXISTS schedule; DROP TABLE IF EXISTS expenses;"))
         conn.commit()
