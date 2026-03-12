@@ -118,32 +118,18 @@ with tab_details:
         with col1:
             st.subheader(f"**{selc}**")
             
-            # ✅ ТОЧНО как ТВОЙ tab_reestr
+            # ✅ ПРЯМО как в ТВОЕМ tab_reestr, но для одного клиента
             with engine.connect() as conn:
                 resdf = pd.read_sql(
-                    text(f"SELECT c.name as Клиент, c.totalamount as План, "
+                    text(f"SELECT c.name as Клиент, c.total_amount as План, "
                          f"COALESCE((SELECT SUM(amount) FROM expenses WHERE clientid = c.id), 0) as Факт "
-                         f"FROM clients c WHERE c.id = {cid}"), conn)
+                         f"FROM clients c WHERE c.id = {cid}"), 
+                    conn)
             
             # ✅ Метрики из результата
             if not resdf.empty:
                 col_a, col_b = st.columns(2)
-                col_a.metric("💰 План", f"{resdf['План'].iloc[0]:,.0f} ₽")
-                col_b.metric("📊 Факт", f"{resdf['Факт'].iloc[0]:,.0f} ₽")
-            
-            # ✅ Платежи ТОЧНО как в твоем коде
-            with engine.connect() as conn:
-                payments = pd.read_sql(
-                    text(f"SELECT date, amount, status FROM schedule WHERE clientid = {cid} ORDER BY date DESC LIMIT 5"), 
-                    conn)
-            
-            st.subheader("💳 Последние платежи")
-            st.dataframe(payments, use_container_width=True)
-        
-        with col2:
-            st.subheader("📎 Файлы")
-            st.info("⏳ В разработке")
-
+                col_a.metric("💰 План",
 
 
 
