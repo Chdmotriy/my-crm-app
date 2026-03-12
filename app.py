@@ -107,33 +107,73 @@ with tab_reestr:
 # Вкладка 4: Карточка (С возможностью редактирования)
 with tab_details:
     with engine.connect() as conn:
-        cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
-    if not cl_list.empty:
-        sel_c = st.selectbox("Клиент", cl_list['name'], key="det_sel")
-        c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
-        t_p, t_e = st.tabs(["💵 Оплаты", "💸 Затраты"])
-        with t_p:
+        cllist = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
+    
+    if not cllist.empty:
+        selc = st.selectbox("👤 Выберите клиента:", cllist['name'], key="detsel")
+        cid = int(cllist[cllist['name'] == selc]['id'].iloc[0])
+        
+        # 📋 Карточка клиента (2 колонки)
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.subheader(f"**{selc}**")
+            
+            # Полные данные клиента
             with engine.connect() as conn:
-                df_p = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
-            ed_p = st.data_editor(df_p, column_config={"id":None}, use_container_width=True, key=f"p_ed_{c_id}")
-            if st.button("Сохранить оплаты", key=f"btn_p_{c_id}"):
-                with engine.connect() as conn:
-                    conn.execute(text("DELETE FROM schedule WHERE client_id=:id"), {"id":c_id})
-                    for _, r in ed_p.iterrows():
-                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id,:d,:a,:s)"), {"id":c_id,"d":r['date'],"a":r['amount'],"s":r['status']})
-                    conn.commit()
-                st.rerun()
-        with t_e:
+                client_data = pd.read_sql(
+                    text("SELECT * FROM clients WHERE id = :id"), 
+                    conn, params={"id": cid}
+                ).iloc[0]
+            
+            # Контакты и метрики
+            with st.expander("📞 Детали клиента", expanded=True):
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.metric("💰 Общая сумма", f"{client_data['totalamount']:,.0f} ₽")
+                    st.metric("📅 Начало", client_data['startdate'].strftime('%d.%m.%Y'))
+                with col_b:
+                    st.metric("📊 Месяцев", client_data['months'])
+                    st.info(f"**Статус:** ✅ Активен")
+            
+            # Последние платежи
             with engine.connect() as conn:
-                df_e = pd.read_sql(text("SELECT id, description, amount, status, date FROM expenses WHERE client_id = :id"), conn, params={"id":c_id})
-            ed_e = st.data_editor(df_e, column_config={"id":None, "status":{"options":["Планируется","ОПЛАЧЕНО"]}}, use_container_width=True, key=f"e_ed_{c_id}")
-            if st.button("Сохранить затраты", key=f"btn_e_{c_id}"):
-                with engine.connect() as conn:
-                    conn.execute(text("DELETE FROM expenses WHERE client_id=:id"), {"id":c_id})
-                    for _, r in ed_e.iterrows():
-                        conn.execute(text("INSERT INTO expenses (client_id, description, amount, status, date) VALUES (:id,:ds,:am,:st,:dt)"), {"id":c_id,"ds":r['description'],"am":r['amount'],"st":r['status'],"dt":r['date']})
-                    conn.commit()
+                recent_payments = pd.read_sql(
+                    text("SELECT date, amount, status FROM schedule WHERE clientid = :id ORDER BY date DESC LIMIT 5"),
+                    conn, params={"id": cid}
+                )
+            st.subheader("💳 Последние платежи")
+            st.dataframe(recent_payments, use_container_width=True, hide_index=True)
+        
+        with col2:
+            st.subheader("📎 Файлы клиента")
+            
+            # Пример файлов (пока статичный)
+            files_df = pd.DataFrame({
+                'Файл': ['Договор.pdf', 'https://example.com/passport.jpg'],
+                'Тип': ['📄 Договор', '🆔 Паспорт'],
+                'Дата': ['12.03.26', '10.03.26']
+            })
+            st.dataframe(files_df, use_container_width=True, hide_index=True)
+            
+            # Загрузка файлов
+            uploaded_files = st.file_uploader("📤 Загрузить", accept_multiple_files=True, type=['pdf','jpg','png'])
+            if uploaded_files:
+                for file in uploaded_files:
+                    st.success(f"✅ {file.name}")
+            
+            # Ссылка
+            new_link = st.text_input("🔗 Добавить ссылку:")
+            if st.button("💾 Сохранить") and new_link:
+                st.success(f"🔗 Сохранена: {new_link}")
+
+        # Редактирование
+        col_edit, _ = st.columns([1, 3])
+        with col_edit:
+            if st.button("✏️ Редактировать", type="secondary"):
+                st.session_state.edit_client = cid
                 st.rerun()
+
 
 # Вкладка 5: Новая сделка
 with tab_add:
