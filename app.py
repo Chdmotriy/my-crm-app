@@ -10,7 +10,7 @@ import io
 
 # --- 1. НАСТРОЙКИ ---
 st.set_page_config(page_title="CRM CashFlow Pro", layout="wide")
-ADMIN_PASSWORD = "ВАШ_ПАРОЛЬ" 
+ADMIN_PASSWORD = "D17v01ch89!" 
 
 with st.sidebar:
     st.title("🔐 Доступ")
