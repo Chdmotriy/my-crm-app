@@ -6,22 +6,20 @@ from icalendar import Calendar, Event
 import sqlalchemy
 from sqlalchemy import text
 
-# --- 1. ЗАЩИТА ПАРОЛЕМ ---
-st.set_page_config(page_title="Secure Cloud CRM", layout="wide")
+# --- 1. НАСТРОЙКИ И ПАРОЛЬ ---
+st.set_page_config(page_title="CRM Рассрочки Pro", layout="wide")
 
-# Придумайте свой пароль здесь
-ADMIN_PASSWORD = "D17v01ch89!" 
+ADMIN_PASSWORD = "ВАШ_ПАРОЛЬ" # ЗАМЕНИТЕ НА СВОЙ
 
 with st.sidebar:
-    st.title("🔐 Авторизация")
-    user_password = st.text_input("Введите пароль доступа", type="password")
+    st.title("🔐 Доступ")
+    user_password = st.text_input("Введите пароль", type="password")
 
 if user_password != ADMIN_PASSWORD:
-    st.info("Пожалуйста, введите пароль в боковой панели, чтобы получить доступ к данным.")
-    st.stop() # Программа замирает здесь, пока пароль неверный
+    st.info("Введите пароль в боковой панели для входа.")
+    st.stop()
 
-# --- 2. БЕЗОПАСНОЕ ПОДКЛЮЧЕНИЕ К БАЗЕ ---
-# Программа сначала ищет пароль в "сейфе" (Secrets), если не находит - берет из кода
+# --- 2. БАЗА ДАННЫХ ---
 try:
     DB_URL = st.secrets["DB_URL"]
 except:
@@ -31,31 +29,29 @@ engine = sqlalchemy.create_engine(DB_URL)
 
 def init_db():
     with engine.connect() as conn:
-        conn.execute(text('''CREATE TABLE IF NOT EXISTS clients 
-                      (id SERIAL PRIMARY KEY, name TEXT, total_amount REAL, months INTEGER, start_date DATE)'''))
-        conn.execute(text('''CREATE TABLE IF NOT EXISTS schedule 
-                      (id SERIAL PRIMARY KEY, client_id INTEGER, date DATE, amount REAL, status TEXT)'''))
+        conn.execute(text("CREATE TABLE IF NOT EXISTS clients (id SERIAL PRIMARY KEY, name TEXT, total_amount REAL, months INTEGER, start_date DATE)"))
+        conn.execute(text("CREATE TABLE IF NOT EXISTS schedule (id SERIAL PRIMARY KEY, client_id INTEGER, date DATE, amount REAL, status TEXT)"))
         conn.commit()
 
 init_db()
 
-# --- ДАЛЕЕ ВЕСЬ ВАШ ПРЕДЫДУЩИЙ ФУНКЦИОНАЛ ---
-st.title("☁️ Облачная CRM: Управление рассрочками")
-
-# (Функция создания календаря)
+# --- 3. ФУНКЦИИ ---
 def create_ics_stable(client_name, schedule_df):
     cal = Calendar()
     for _, row in schedule_df.iterrows():
         event = Event()
         event.add('summary', f"💰 Платеж: {client_name}")
-        event.add('dtstart', row['date'])
-        event.add('dtend', row['date'])
+        event.add('dtstart', pd.to_datetime(row['date']).date())
+        event.add('dtend', pd.to_datetime(row['date']).date())
         event.add('description', f"Сумма: {row['amount']:,.0f} руб.")
         cal.add_component(event)
     return cal.to_ical()
 
+# --- 4. ИНТЕРФЕЙС ---
+st.title("📈 Облачная CRM")
+
 tab_main, tab_reestr, tab_details, tab_add = st.tabs([
-    "📊 Аналитика", "📋 Сводный реестр", "🔍 Карточка и Управление", "➕ Новый клиент"
+    "📊 Аналитика", "📋 Сводный реестр", "🔍 Карточка и Редактор", "➕ Новый клиент"
 ])
 
 with tab_main:
@@ -82,12 +78,13 @@ with tab_reestr:
 with tab_details:
     with engine.connect() as conn:
         client_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
+    
     if not client_list.empty:
-        col_sel, col_del = st.columns(2)
+        col_sel, col_del = st.columns([3, 1])
         sel_name = col_sel.selectbox("Выберите клиента", client_list['name'])
         c_id = int(client_list[client_list['name'] == sel_name]['id'].values[0])
         
-        if col_del.button("❌ Удалить клиента"):
+        if col_del.button("❌ Удалить клиента", use_container_width=True):
             with engine.connect() as conn:
                 conn.execute(text("DELETE FROM schedule WHERE client_id = :id"), {"id": c_id})
                 conn.execute(text("DELETE FROM clients WHERE id = :id"), {"id": c_id})
@@ -95,25 +92,37 @@ with tab_details:
             st.rerun()
 
         with engine.connect() as conn:
-            sched_data = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
+            sched_df = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
         
-        st.download_button("📅 Скачать Календарь (.ics)", create_ics_stable(sel_name, sched_data[sched_data['status']=='Ожидается']), f"{sel_name}.ics")
-        
-        for idx, row in sched_data.iterrows():
-            c1, c2, c3, c4 = st.columns(4)
-            new_d = c1.date_input(f"Дата {idx+1}", value=row['date'], key=f"d_{row['id']}")
-            new_a = c2.number_input(f"Сумма {idx+1}", value=float(row['amount']), key=f"a_{row['id']}")
-            new_s = c3.selectbox(f"Статус", ["Ожидается", "ОПЛАЧЕНО"], index=0 if row['status']=="Ожидается" else 1, key=f"s_{row['id']}")
-            if c4.button("💾", key=f"b_{row['id']}"):
-                with engine.connect() as conn:
-                    conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:id"), {"d": new_d, "a": new_a, "s": new_s, "id": row['id']})
-                    conn.commit()
-                st.rerun()
+        st.write(f"### Редактор графика: {sel_name}")
+        edited_df = st.data_editor(
+            sched_df, 
+            column_config={
+                "id": None,
+                "date": st.column_config.DateColumn("Дата", required=True),
+                "amount": st.column_config.NumberColumn("Сумма", min_value=0),
+                "status": st.column_config.SelectboxColumn("Статус", options=["Ожидается", "ОПЛАЧЕНО"])
+            },
+            num_rows="dynamic", use_container_width=True, key=f"ed_{c_id}"
+        )
+
+        c_save, c_cal = st.columns(2)
+        if c_save.button("💾 Сохранить весь график", type="primary", use_container_width=True):
+            with engine.connect() as conn:
+                conn.execute(text("DELETE FROM schedule WHERE client_id = :id"), {"id": c_id})
+                for _, row in edited_df.iterrows():
+                    conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :dt, :am, :st)"), 
+                                 {"id": c_id, "dt": row['date'], "am": row['amount'], "st": row['status']})
+                conn.commit()
+            st.success("Обновлено!"); st.rerun()
+
+        ics_data = create_ics_stable(sel_name, sched_df[sched_df['status']=='Ожидается'])
+        c_cal.download_button("📅 Скачать Календарь", ics_data, f"{sel_name}.ics", use_container_width=True)
 
 with tab_add:
     with st.form("add_form"):
         n, t, m, d = st.text_input("ФИО"), st.number_input("Сумма", value=180000.0), st.number_input("Месяцев", value=12), st.date_input("Старт", datetime.now())
-        if st.form_submit_button("Создать"):
+        if st.form_submit_button("Создать клиента"):
             if n:
                 with engine.connect() as conn:
                     res = conn.execute(text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n,:t,:m,:d) RETURNING id"), {"n":n, "t":t, "m":m, "d":d})
@@ -124,3 +133,8 @@ with tab_add:
                         conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :dt, :am, 'Ожидается')"), {"id": new_id, "dt": d.replace(year=yr, month=mo), "am": t/m})
                     conn.commit()
                 st.rerun()
+
+if st.sidebar.button("🗑 Очистить базу (Все данные)"):
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM clients")); conn.execute(text("DELETE FROM schedule")); conn.commit()
+    st.rerun()
