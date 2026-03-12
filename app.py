@@ -106,9 +106,8 @@ with tab_reestr:
 
 # Вкладка 4: Карточка (С возможностью редактирования)
 with tab_details:
-    # 1. Список клиентов
-    with engine.connect() as conn:
-        cllist = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
+    # 1. Получаем список клиентов
+    cllist = pd.read_sql("SELECT id, name FROM clients ORDER BY name", engine)
     
     if not cllist.empty:
         selc = st.selectbox("👤 Выбери клиента:", cllist['name'], key="detsel")
@@ -119,31 +118,31 @@ with tab_details:
         with col1:
             st.subheader(f"**{selc}**")
             
-            # 2. ПРОСТЫЕ запросы без параметров
-            with engine.connect() as conn:
-                total_amount = pd.read_sql(f"SELECT SUM(amount) as total FROM schedule WHERE clientid = {cid}", conn)
+            # 2. Total amount БЕЗ conn!
+            total_df = pd.read_sql(f"SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE clientid = {cid}", engine)
+            total = float(total_df['total'].iloc[0]) if not total_df.empty else 0
             
-            with engine.connect() as conn:
-                payments = pd.read_sql(f"SELECT date, amount, status FROM schedule WHERE clientid = {cid} ORDER BY date DESC LIMIT 5", conn)
+            # 3. Платежи БЕЗ conn!
+            payments_df = pd.read_sql(f"SELECT date, amount, status FROM schedule WHERE clientid = {cid} ORDER BY date DESC LIMIT 5", engine)
             
-            # 3. Безопасный вывод
-            total = total_amount['total'].sum() if not total_amount.empty and len(total_amount) > 0 else 0
-            
+            # 4. Метрики
             col_a, col_b = st.columns(2)
             with col_a:
-                st.metric("💰 Всего", f"{total:,.0f} ₽")
+                st.metric("💰 Всего оплачено", f"{total:,.0f} ₽")
             with col_b:
-                st.metric("📅 Платежей", len(payments))
+                st.metric("📅 Платежей", len(payments_df))
             
-            if not payments.empty:
+            # 5. Таблица платежей
+            if not payments_df.empty:
                 st.subheader("💳 Последние платежи")
-                st.dataframe(payments.head(), use_container_width=True)
+                st.dataframe(payments_df, use_container_width=True, hide_index=True)
             else:
                 st.info("ℹ️ Нет платежей")
         
         with col2:
             st.subheader("📎 Файлы")
             st.info("⏳ В разработке")
+
 
 
 
