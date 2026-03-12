@@ -10,7 +10,7 @@ import io
 # --- 1. НАСТРОЙКИ И ПАРОЛЬ ---
 st.set_page_config(page_title="CRM Profit Pro", layout="wide")
 
-ADMIN_PASSWORD = "ВАШ_ПАРОЛЬ" # ЗАМЕНИТЕ НА СВОЙ
+ADMIN_PASSWORD = "D17v01ch89!" # ЗАМЕНИТЕ НА СВОЙ
 
 with st.sidebar:
     st.title("🔐 Доступ")
