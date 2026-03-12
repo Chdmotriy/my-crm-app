@@ -66,7 +66,7 @@ with t1:
             st.rerun()
     
     with engine.connect() as conn:
-        clients = pd.read_sql_query(text("SELECT * FROM clients ORDER BY id DESC"), conn)
+        clients = pd.read_sql_query(text("SELECT * FROM clients"), conn)
     st.dataframe(clients, use_container_width=True)
 
 # 2. КАЛЕНДАРЬ ПЛАТЕЖЕЙ
@@ -88,9 +88,10 @@ with t2:
                                   {"cid": int(c_id), "a": amt, "d": dt, "c": comm})
                         conn.commit()
                     st.rerun()
+            else: st.warning("Сначала добавьте клиента")
     
     with engine.connect() as conn:
-        sched = pd.read_sql_query(text("SELECT s.*, c.name as client_name FROM schedule s LEFT JOIN clients c ON s.client_id = c.id"), conn)
+        sched = pd.read_sql_query(text("SELECT * FROM schedule"), conn)
     st.dataframe(sched, use_container_width=True)
 
 # 3. РАСХОДЫ
@@ -108,7 +109,11 @@ with t3:
             st.rerun()
     
     with engine.connect() as conn:
-        exp_list = pd.read_sql_query(text("SELECT * FROM expenses ORDER BY expense_date DESC"), conn)
+        # Убираем жесткую сортировку, чтобы не вылетала ошибка из-за имен колонок
+        try:
+            exp_list = pd.read_sql_query(text("SELECT * FROM expenses ORDER BY id DESC"), conn)
+        except:
+            exp_list = pd.read_sql_query(text("SELECT * FROM expenses"), conn)
     st.dataframe(exp_list, use_container_width=True)
 
 # 4. КАРТОЧКА КЛИЕНТА
@@ -122,7 +127,7 @@ with t4:
         
         with tab_fin:
             with engine.connect() as conn:
-                p_hist = pd.read_sql_query(text("SELECT amount, planned_date, status FROM schedule WHERE client_id = :id"), conn, params={"id": curr_cid})
+                p_hist = pd.read_sql_query(text("SELECT * FROM schedule WHERE client_id = :id"), conn, params={"id": curr_cid})
             st.table(p_hist)
             
         with tab_doc:
@@ -137,7 +142,7 @@ with t4:
                     st.rerun()
             
             with engine.connect() as conn:
-                docs = pd.read_sql_query(text("SELECT id, file_name, file_url FROM client_documents WHERE client_id = :id"), conn, params={"id": curr_cid})
+                docs = pd.read_sql_query(text("SELECT * FROM client_documents WHERE client_id = :id"), conn, params={"id": curr_cid})
             for _, d in docs.iterrows():
                 c_txt, c_btn, c_del = st.columns([3,1,1])
                 c_txt.write(f"📎 {d['file_name']}")
