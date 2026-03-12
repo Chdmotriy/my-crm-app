@@ -62,13 +62,15 @@ with tabs[0]:
                 st.success("Готово!")
                 st.rerun()
     
-    clients = pd.read_sql("SELECT * FROM clients ORDER BY id DESC", engine)
+    with engine.connect() as conn:
+        clients = pd.read_sql("SELECT * FROM clients ORDER BY id DESC", conn)
     st.dataframe(clients, use_container_width=True)
 
 # 2. КАЛЕНДАРЬ ПЛАТЕЖЕЙ
 with tabs[1]:
     st.subheader("План поступлений")
-    cl_df = pd.read_sql("SELECT id, name FROM clients", engine)
+    with engine.connect() as conn:
+        cl_df = pd.read_sql("SELECT id, name FROM clients", conn)
     
     with st.expander("📅 Запланировать приход"):
         with st.form("add_sch"):
@@ -78,10 +80,11 @@ with tabs[1]:
             comm = st.text_input("Комментарий")
             if st.form_submit_button("Добавить"):
                 run_query("INSERT INTO schedule (client_id, amount, planned_date, comment) VALUES (:cid, :a, :d, :c)",
-                          {"cid": c_id, "a": amt, "d": dt, "c": comm})
+                          {"cid": int(c_id), "a": amt, "d": dt, "c": comm})
                 st.rerun()
     
-    sched = pd.read_sql("SELECT s.*, c.name as client_name FROM schedule s JOIN clients c ON s.client_id = c.id", engine)
+    with engine.connect() as conn:
+        sched = pd.read_sql("SELECT s.*, c.name as client_name FROM schedule s JOIN clients c ON s.client_id = c.id", conn)
     st.dataframe(sched, use_container_width=True)
 
 # 3. РАСХОДЫ
@@ -95,6 +98,10 @@ with tabs[2]:
             run_query("INSERT INTO expenses (amount, category, expense_date) VALUES (:a, :c, :d)",
                       {"a": e_amt, "c": e_cat, "d": e_dt})
             st.rerun()
+    
+    with engine.connect() as conn:
+        exp_list = pd.read_sql("SELECT * FROM expenses ORDER BY expense_date DESC", conn)
+    st.dataframe(exp_list, use_container_width=True)
 
 # 4. КАРТОЧКА КЛИЕНТА + ДОКУМЕНТЫ
 with tabs[3]:
@@ -106,11 +113,11 @@ with tabs[3]:
         c1, c2 = st.tabs(["💰 История оплат", "📄 Документы и Ссылки"])
         
         with c1:
-            p_hist = pd.read_sql(text("SELECT amount, planned_date, status FROM schedule WHERE client_id = :id"), engine, params={"id": curr_cid})
+            with engine.connect() as conn:
+                p_hist = pd.read_sql(text("SELECT amount, planned_date, status FROM schedule WHERE client_id = :id"), conn, params={"id": curr_cid})
             st.table(p_hist)
             
         with c2:
-            # Блок ссылок на документы
             with st.expander("➕ Прикрепить ссылку на договор/файл"):
                 d_n = st.text_input("Название документа")
                 d_u = st.text_input("Ссылка (Google Drive/Dropbox)")
@@ -119,14 +126,16 @@ with tabs[3]:
                               {"cid": curr_cid, "n": d_n, "u": d_u})
                     st.rerun()
             
-            docs = pd.read_sql(text("SELECT id, file_name, file_url FROM client_documents WHERE client_id = :id"), engine, params={"id": curr_cid})
+            with engine.connect() as conn:
+                docs = pd.read_sql(text("SELECT id, file_name, file_url FROM client_documents WHERE client_id = :id"), conn, params={"id": curr_cid})
+            
             for _, d in docs.iterrows():
-                cols = st.columns([3, 1, 1])
-                cols[0].write(f"📎 {d['file_name']}")
-                cols[1].link_button("Открыть", d['file_url'])
+                col_text, col_btn, col_del = st.columns([3, 1, 1])
+                col_text.write(f"📎 {d['file_name']}")
+                col_btn.link_button("Открыть", d['file_url'])
                 if st.session_state.role == "admin":
-                    if cols[2].button("🗑️", key=f"del_{d['id']}"):
-                        run_query("DELETE FROM client_documents WHERE id = :id", {"id": d['id']})
+                    if col_del.button("🗑️", key=f"del_{d['id']}"):
+                        run_query("DELETE FROM client_documents WHERE id = :id", {"id": int(d['id'])})
                         st.rerun()
 
 # 5. АНАЛИТИКА (ТОЛЬКО ДЛЯ АДМИНА)
@@ -134,19 +143,18 @@ with tabs[4]:
     if st.session_state.role == "admin":
         st.subheader("Визуализация данных")
         
-        # Считаем итоги
-        inc_total = pd.read_sql("SELECT SUM(amount) FROM schedule WHERE status='paid'", engine).iloc[0,0] or 0
-        exp_total = pd.read_sql("SELECT SUM(amount) FROM expenses", engine).iloc[0,0] or 0
+        with engine.connect() as conn:
+            inc_total_res = conn.execute(text("SELECT SUM(amount) FROM schedule WHERE status='paid'")).scalar() or 0
+            exp_total_res = conn.execute(text("SELECT SUM(amount) FROM expenses")).scalar() or 0
+            exp_df = pd.read_sql("SELECT category, SUM(amount) as total FROM expenses GROUP BY category", conn)
         
         m1, m2, m3 = st.columns(3)
-        m1.metric("Общий доход", f"{inc_total} ₽")
-        m2.metric("Расходы", f"{exp_total} ₽")
-        m3.metric("Чистая прибыль", f"{inc_total - exp_total} ₽")
+        m1.metric("Общий доход", f"{inc_total_res} ₽")
+        m2.metric("Расходы", f"{exp_total_res} ₽")
+        m3.metric("Чистая прибыль", f"{inc_total_res - exp_total_res} ₽")
         
-        # График расходов
-        exp_df = pd.read_sql("SELECT category, SUM(amount) as total FROM expenses GROUP BY category", engine)
         if not exp_df.empty:
-            fig = px.pie(exp_df, values='total', names='category', title="Структура расходов")
+            fig = px.pie(exp_df, values='total', names='category', title="Структура расходов", hole=0.3)
             st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning("⚠️ У вас нет прав для просмотра аналитики.")
