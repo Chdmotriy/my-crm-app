@@ -48,12 +48,12 @@ tab_main, tab_reestr, tab_details, tab_add = st.tabs([
 with tab_main:
     with engine.connect() as conn:
         inc_df = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM schedule", conn)
-        total_revenue = float(inc_df['t'].fillna(0).iloc[0])
-        paid_revenue = float(inc_df['p'].fillna(0).iloc[0])
+        total_revenue = float(inc_df['t'].fillna(0).values[0])
+        paid_revenue = float(inc_df['p'].fillna(0).values[0])
 
         exp_df = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM expenses", conn)
-        total_expenses = float(exp_df['t'].fillna(0).iloc[0])
-        paid_expenses = float(exp_df['p'].fillna(0).iloc[0])
+        total_expenses = float(exp_df['t'].fillna(0).values[0])
+        paid_expenses = float(exp_df['p'].fillna(0).values[0])
     
     st.subheader("💰 Финансовый результат (Все время)")
     c1, c2, c3, c4 = st.columns(4)
@@ -91,14 +91,23 @@ with tab_reestr:
     
     if not df_clients.empty:
         df_r = pd.merge(df_clients, df_exp_sum, left_on='id', right_on='client_id', how='left')
-        df_r['total_exp'] = df_r['total_exp'].fillna(0) # Убираем пустые значения
-        df_r['Прибыль'] = df_r['total_amount'] - df_r['total_exp']
+        # ПРИНУДИТЕЛЬНО ПРЕВРАЩАЕМ В ЧИСЛА И УБИРАЕМ NaN
+        df_r['Выручка'] = pd.to_numeric(df_r['total_amount'], errors='coerce').fillna(0)
+        df_r['Затраты'] = pd.to_numeric(df_r['total_exp'], errors='coerce').fillna(0)
+        df_r['Прибыль'] = df_r['Выручка'] - df_r['Затраты']
         
-        # Формируем итоговую таблицу
-        final_df = df_r[['name', 'total_amount', 'total_exp', 'Прибыль']].rename(columns={
-            'name': 'Клиент', 'total_amount': 'Выручка', 'total_exp': 'Затраты'
-        })
-        st.dataframe(final_df.style.format("{:,.0f} ₽"), use_container_width=True)
+        final_df = df_r[['name', 'Выручка', 'Затраты', 'Прибыль']].rename(columns={'name': 'Клиент'})
+        
+        # Новый способ отображения через column_config (более надежный)
+        st.dataframe(
+            final_df,
+            column_config={
+                "Выручка": st.column_config.NumberColumn(format="%d ₽"),
+                "Затраты": st.column_config.NumberColumn(format="%d ₽"),
+                "Прибыль": st.column_config.NumberColumn(format="%d ₽"),
+            },
+            use_container_width=True
+        )
 
 # --- ВКЛАДКА: КАРТОЧКА И ЗАТРАТЫ ---
 with tab_details:
