@@ -118,18 +118,33 @@ with tab_details:
         with col1:
             st.subheader(f"**{selc}**")
             
-            # ✅ ПРЯМО как в ТВОЕМ tab_reestr, но для одного клиента
+            # Данные клиента (БЕЗ total_amount)
             with engine.connect() as conn:
                 resdf = pd.read_sql(
-                    text(f"SELECT c.name as Клиент, c.total_amount as План, "
-                         f"COALESCE((SELECT SUM(amount) FROM expenses WHERE clientid = c.id), 0) as Факт "
+                    text(f"SELECT c.name as Клиент, "
+                         f"COALESCE((SELECT SUM(amount) FROM schedule WHERE clientid = c.id), 0) as Оплачено "
                          f"FROM clients c WHERE c.id = {cid}"), 
                     conn)
             
-            # ✅ Метрики из результата
+            # Метрики (ПРОВЕРЕННЫЕ скобки)
             if not resdf.empty:
                 col_a, col_b = st.columns(2)
-                col_a.metric("💰 План",
+                col_a.metric("💰 Оплачено", f"{resdf['Оплачено'].iloc[0]:,.0f} ₽")
+                col_b.metric("📊 Сделок", 1)
+            
+            # Платежи
+            with engine.connect() as conn:
+                payments = pd.read_sql(f"SELECT date, amount, status FROM schedule WHERE clientid = {cid} ORDER BY date DESC LIMIT 5", conn)
+            
+            st.subheader("💳 Последние платежи")
+            if not payments.empty:
+                st.dataframe(payments, use_container_width=True, hide_index=True)
+            else:
+                st.info("ℹ️ Нет платежей")
+        
+        with col2:
+            st.subheader("📎 Файлы")
+            st.info("⏳ В разработке")
 
 
 
