@@ -121,18 +121,40 @@ with tab_details:
 
 with tab_add:
     with st.form("add_form"):
-        n, t, m, d = st.text_input("ФИО"), st.number_input("Сумма", value=180000.0), st.number_input("Месяцев", value=12), st.date_input("Старт", datetime.now())
-        if st.form_submit_button("Создать клиента"):
+        n = st.text_input("ФИО клиента")
+        t = st.number_input("Общая сумма договора", min_value=0.0, value=180000.0)
+        m = st.number_input("Кол-во месяцев (платежей)", min_value=1, value=12, step=1)
+        d = st.date_input("Дата первого платежа", datetime.now())
+        
+        if st.form_submit_button("🚀 Создать клиента и график"):
             if n:
                 with engine.connect() as conn:
-                    res = conn.execute(text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n,:t,:m,:d) RETURNING id"), {"n":n, "t":t, "m":m, "d":d})
-                    new_id = res.fetchone()[0]
+                    # 1. Добавляем клиента и получаем его ID
+                    res = conn.execute(
+                        text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n, :t, :m, :d) RETURNING id"),
+                        {"n": n, "t": t, "m": int(m), "d": d}
+                    )
+                    new_id = res.fetchone()[0] # Берем ID созданного клиента
+                    
+                    # 2. Генерируем график платежей
+                    monthly_amount = t / m
                     for i in range(int(m)):
-                        mo = (d.month + i - 1) % 12 + 1
-                        yr = d.year + (d.month + i - 1) // 12
-                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :dt, :am, 'Ожидается')"), {"id": new_id, "dt": d.replace(year=yr, month=mo), "am": t/m})
+                        # Логика сдвига месяцев
+                        month_offset = (d.month + i - 1) % 12 + 1
+                        year_offset = d.year + (d.month + i - 1) // 12
+                        pay_date = d.replace(year=year_offset, month=month_offset)
+                        
+                        # Запись в таблицу schedule (ИСПРАВЛЕНО: параметры :id, :date, :amount)
+                        conn.execute(
+                            text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :date, :amount, :status)"),
+                            {"id": new_id, "date": pay_date, "amount": monthly_amount, "status": "Ожидается"}
+                        )
                     conn.commit()
+                st.success(f"Клиент {n} успешно добавлен в облако!")
                 st.rerun()
+            else:
+                st.error("Пожалуйста, введите ФИО клиента.")
+
 
 if st.sidebar.button("🗑 Очистить базу (Все данные)"):
     with engine.connect() as conn:
