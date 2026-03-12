@@ -2,179 +2,143 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
+import calendar
 from icalendar import Calendar, Event
 import sqlalchemy
 from sqlalchemy import text
 import io
 
-# --- 1. НАСТРОЙКИ И ПАРОЛЬ ---
-st.set_page_config(page_title="CRM Profit Pro", layout="wide")
-
-ADMIN_PASSWORD = "D17v01ch89!" # ЗАМЕНИТЕ НА СВОЙ
+# --- 1. НАСТРОЙКИ ---
+st.set_page_config(page_title="CRM CashFlow Pro", layout="wide")
+ADMIN_PASSWORD = "ВАШ_ПАРОЛЬ" 
 
 with st.sidebar:
     st.title("🔐 Доступ")
     user_password = st.text_input("Введите пароль", type="password")
-
 if user_password != ADMIN_PASSWORD:
-    st.info("Введите пароль в боковой панели.")
+    st.info("Введите пароль.")
     st.stop()
 
-# --- 2. БАЗА ДАННЫХ ---
+# --- 2. БАЗА ---
 try:
     DB_URL = st.secrets["DB_URL"]
 except:
     DB_URL = "postgresql://neondb_owner:npg_ymONePvDcf43@ep-snowy-forest-a4f6efz3-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require"
-
 engine = sqlalchemy.create_engine(DB_URL)
 
-def init_db():
-    with engine.connect() as conn:
-        conn.execute(text("CREATE TABLE IF NOT EXISTS clients (id SERIAL PRIMARY KEY, name TEXT, total_amount REAL, months INTEGER, start_date DATE)"))
-        conn.execute(text("CREATE TABLE IF NOT EXISTS schedule (id SERIAL PRIMARY KEY, client_id INTEGER, date DATE, amount REAL, status TEXT)"))
-        conn.execute(text("CREATE TABLE IF NOT EXISTS expenses (id SERIAL PRIMARY KEY, client_id INTEGER, description TEXT, amount REAL, status TEXT, date DATE)"))
-        conn.commit()
+# --- 3. ФУНКЦИЯ УМНОЙ ДАТЫ ---
+def get_end_of_month(date_val=None):
+    if date_val is None:
+        date_val = datetime.now()
+    last_day = calendar.monthrange(date_val.year, date_val.month)[1]
+    return date_val.replace(day=last_day)
 
-init_db()
-
-# --- 3. ИНТЕРФЕЙС ---
-st.title("🚀 CRM: Выручка и Чистая прибыль")
+# --- 4. ИНТЕРФЕЙС ---
+st.title("💰 Прогноз движения денежных средств")
 
 tab_main, tab_reestr, tab_details, tab_add = st.tabs([
-    "📊 Аналитика прибыли", "📋 Сводный реестр", "🔍 Карточка и Затраты", "➕ Новая сделка"
+    "📈 Прогноз и Аналитика", "📋 Реестр сделок", "🔍 Карточка и Расходы", "➕ Новая сделка"
 ])
 
-# --- ВКЛАДКА: АНАЛИТИКА ---
 with tab_main:
+    # Загрузка всех плановых данных
     with engine.connect() as conn:
-        inc_df = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM schedule", conn)
-        total_revenue = float(inc_df['t'].fillna(0).values[0])
-        paid_revenue = float(inc_df['p'].fillna(0).values[0])
+        all_inc = pd.read_sql("SELECT date, amount FROM schedule WHERE status = 'Ожидается'", conn)
+        all_exp = pd.read_sql("SELECT date, amount, status FROM expenses WHERE status = 'Планируется'", conn)
+    
+    # Обработка "плавающих" дат расходов
+    today = datetime.now().date()
+    def adjust_exp_date(d):
+        if d is None or d < today:
+            return get_end_of_month(datetime.now()).date()
+        return d
 
-        exp_df = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM expenses", conn)
-        total_expenses = float(exp_df['t'].fillna(0).values[0])
-        paid_expenses = float(exp_df['p'].fillna(0).values[0])
+    if not all_exp.empty:
+        all_exp['date'] = all_exp['date'].apply(adjust_exp_date)
+
+    # Группировка для графика Cash Flow
+    all_inc['month'] = pd.to_datetime(all_inc['date']).dt.to_period('M').astype(str)
+    all_exp['month'] = pd.to_datetime(all_exp['date']).dt.to_period('M').astype(str)
     
-    st.subheader("💰 Финансовый результат (Все время)")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Общая выручка", f"{total_revenue:,.0f} ₽")
-    c2.metric("Всего затрат", f"{total_expenses:,.0f} ₽", delta=f"-{total_expenses:,.0f}", delta_color="inverse")
-    c3.metric("Чистая прибыль (план)", f"{(total_revenue - total_expenses):,.0f} ₽")
-    c4.metric("Деньги в кассе (факт)", f"{(paid_revenue - paid_expenses):,.0f} ₽")
+    inc_m = all_inc.groupby('month')['amount'].sum().reset_index(name='Доход')
+    exp_m = all_exp.groupby('month')['amount'].sum().reset_index(name='Расход')
     
-    st.divider()
-    
-    with engine.connect() as conn:
-        years_df = pd.read_sql("SELECT DISTINCT EXTRACT(YEAR FROM date) as year FROM schedule ORDER BY year DESC", conn)
-    available_years = [int(y) for y in years_df['year'].tolist()] if not years_df.empty else [datetime.now().year]
-    sel_year = st.selectbox("📅 Детализация за год", available_years)
-    
-    with engine.connect() as conn:
-        rev_m = pd.read_sql(text("SELECT TO_CHAR(date, 'Month') as month, TO_CHAR(date, 'MM') as m_num, SUM(amount) as revenue FROM schedule WHERE EXTRACT(YEAR FROM date) = :y GROUP BY month, m_num"), conn, params={"y": sel_year})
-        exp_m = pd.read_sql(text("SELECT TO_CHAR(date, 'Month') as month, TO_CHAR(date, 'MM') as m_num, SUM(amount) as expense FROM expenses WHERE EXTRACT(YEAR FROM date) = :y GROUP BY month, m_num"), conn, params={"y": sel_year})
+    cf_df = pd.merge(inc_m, exp_m, on='month', how='outer').fillna(0).sort_values('month')
+    cf_df['Остаток за месяц'] = cf_df['Доход'] - cf_df['Расход']
+
+    st.subheader("🗓 Прогноз поступлений и трат по месяцам")
+    if not cf_df.empty:
+        fig_cf = px.bar(cf_df, x='month', y=['Доход', 'Расход'], barmode='group',
+                        title="Ожидаемые входящие и исходящие потоки",
+                        color_discrete_map={'Доход': '#00CC96', 'Расход': '#EF553B'})
+        st.plotly_chart(fig_cf, use_container_width=True)
         
-    if not rev_m.empty:
-        chart_data = pd.merge(rev_m, exp_m, on=['month', 'm_num'], how='outer').fillna(0).sort_values('m_num')
-        st.plotly_chart(px.bar(chart_data, x='month', y=['revenue', 'expense'], barmode='group', 
-                             title=f"Доходы vs Расходы ({sel_year})",
-                             labels={'value': 'Сумма (₽)', 'month': 'Месяц', 'variable': 'Тип'},
-                             color_discrete_map={'revenue': '#00CC96', 'expense': '#EF553B'}), use_container_width=True)
+        st.write("### Детализация прогноза")
+        st.table(cf_df.rename(columns={'month': 'Месяц'}).style.format("{:,.0f} ₽", subset=['Доход', 'Расход', 'Остаток за месяц']))
     else:
-        st.info("Данных за этот год пока нет.")
+        st.info("Нет запланированных движений денег.")
 
-# --- ВКЛАДКА: РЕЕСТР ---
 with tab_reestr:
-    search = st.text_input("🔍 Найти клиента", "")
+    # Стандартный реестр (код из прошлых шагов)
     with engine.connect() as conn:
-        df_clients = pd.read_sql(text("SELECT id, name, total_amount FROM clients WHERE name ILIKE :n ORDER BY name ASC"), conn, params={"n": f"%{search}%"})
-        df_exp_sum = pd.read_sql("SELECT client_id, SUM(amount) as total_exp FROM expenses GROUP BY client_id", conn)
+        clients = pd.read_sql("SELECT id, name, total_amount FROM clients ORDER BY name", conn)
+        exp_sum = pd.read_sql("SELECT client_id, SUM(amount) as total_exp FROM expenses GROUP BY client_id", conn)
     
-    if not df_clients.empty:
-        df_r = pd.merge(df_clients, df_exp_sum, left_on='id', right_on='client_id', how='left')
-        # ПРИНУДИТЕЛЬНО ПРЕВРАЩАЕМ В ЧИСЛА И УБИРАЕМ NaN
-        df_r['Выручка'] = pd.to_numeric(df_r['total_amount'], errors='coerce').fillna(0)
-        df_r['Затраты'] = pd.to_numeric(df_r['total_exp'], errors='coerce').fillna(0)
-        df_r['Прибыль'] = df_r['Выручка'] - df_r['Затраты']
-        
-        final_df = df_r[['name', 'Выручка', 'Затраты', 'Прибыль']].rename(columns={'name': 'Клиент'})
-        
-        # Новый способ отображения через column_config (более надежный)
-        st.dataframe(
-            final_df,
-            column_config={
-                "Выручка": st.column_config.NumberColumn(format="%d ₽"),
-                "Затраты": st.column_config.NumberColumn(format="%d ₽"),
-                "Прибыль": st.column_config.NumberColumn(format="%d ₽"),
-            },
-            use_container_width=True
-        )
+    if not clients.empty:
+        res = pd.merge(clients, exp_sum, left_on='id', right_on='client_id', how='left').fillna(0)
+        res['Прибыль'] = res['total_amount'] - res['total_exp']
+        st.dataframe(res[['name', 'total_amount', 'total_exp', 'Прибыль']].style.format("{:,.0f} ₽"), use_container_width=True)
 
-# --- ВКЛАДКА: КАРТОЧКА И ЗАТРАТЫ ---
 with tab_details:
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
     
     if not cl_list.empty:
         sel_c = st.selectbox("Выберите клиента", cl_list['name'])
-        c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
+        c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc)
         
-        col_pay, col_exp = st.tabs(["💵 График оплат (Доход)", "💸 Затраты по клиенту (Расход)"])
+        t1, t2 = st.tabs(["💰 Оплаты клиента", "💸 Затраты"])
         
-        with col_pay:
+        with t1:
             with engine.connect() as conn:
-                sh_df = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
-            ed_pay = st.data_editor(sh_df, column_config={"id":None}, num_rows="dynamic", use_container_width=True, key=f"p_{c_id}")
-            if st.button("💾 Сохранить оплаты", key=f"sp_{c_id}"):
+                df1 = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
+            ed1 = st.data_editor(df1, column_config={"id":None}, num_rows="dynamic", use_container_width=True, key=f"p_{c_id}")
+            if st.button("Сохранить оплаты", key="s1"):
                 with engine.connect() as conn:
-                    conn.execute(text("DELETE FROM schedule WHERE client_id = :id"), {"id": c_id})
-                    for _, r in ed_pay.iterrows():
-                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :dt, :am, :st)"), 
-                                     {"id": c_id, "dt": r['date'], "am": r['amount'], "st": r['status']})
+                    conn.execute(text("DELETE FROM schedule WHERE client_id=:id"), {"id":c_id})
+                    for _, r in ed1.iterrows():
+                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id,:d,:a,:s)"), {"id":c_id,"d":r['date'],"a":r['amount'],"s":r['status']})
                     conn.commit()
                 st.rerun()
 
-        with col_exp:
+        with t2:
             with engine.connect() as conn:
-                ex_df = pd.read_sql(text("SELECT id, description, amount, status, date FROM expenses WHERE client_id = :id"), conn, params={"id": c_id})
-            ed_exp = st.data_editor(ex_df, column_config={
-                "id":None, 
-                "status": st.column_config.SelectboxColumn("Статус", options=["Планируется","ОПЛАЧЕНО"]),
-                "date": st.column_config.DateColumn("Дата")
-            }, num_rows="dynamic", use_container_width=True, key=f"e_{c_id}")
-            if st.button("💾 Сохранить затраты", key=f"se_{c_id}"):
+                df2 = pd.read_sql(text("SELECT id, description, amount, status, date FROM expenses WHERE client_id = :id"), conn, params={"id":c_id})
+            st.caption("Если дата пустая, расход встанет на конец текущего месяца.")
+            ed2 = st.data_editor(df2, column_config={"id":None, "status":{"options":["Планируется","ОПЛАЧЕНО"]}}, num_rows="dynamic", use_container_width=True, key=f"e_{c_id}")
+            if st.button("Сохранить затраты", key="s2"):
                 with engine.connect() as conn:
-                    conn.execute(text("DELETE FROM expenses WHERE client_id = :id"), {"id": c_id})
-                    for _, r in ed_exp.iterrows():
-                        conn.execute(text("INSERT INTO expenses (client_id, description, amount, status, date) VALUES (:id, :ds, :am, :st, :dt)"), 
-                                     {"id": c_id, "ds": r['description'], "am": r['amount'], "st": r['status'], "dt": r['date']})
+                    conn.execute(text("DELETE FROM expenses WHERE client_id=:id"), {"id":c_id})
+                    for _, r in ed2.iterrows():
+                        # Авто-подстановка даты конца месяца, если дата не введена
+                        final_date = r['date'] if not pd.isna(r['date']) else get_end_of_month().date()
+                        conn.execute(text("INSERT INTO expenses (client_id, description, amount, status, date) VALUES (:id,:ds,:am,:st,:dt)"), 
+                                     {"id":c_id,"ds":r['description'],"am":r['amount'],"st":r['status'],"dt":final_date})
                     conn.commit()
                 st.rerun()
-    else:
-        st.info("Добавьте первого клиента")
 
-# --- ВКЛАДКА: НОВЫЙ КЛИЕНТ ---
 with tab_add:
-    with st.form("add_c"):
-        n = st.text_input("ФИО клиента")
-        t = st.number_input("Сумма сделки", value=100000.0)
-        type_p = st.radio("Тип оплаты", ["Рассрочка", "Сразу"], horizontal=True)
-        m = st.number_input("Кол-во месяцев (для рассрочки)", value=1, min_value=1)
-        d = st.date_input("Дата начала", datetime.now())
-        if st.form_submit_button("✅ Создать сделку"):
-            if n:
-                with engine.connect() as conn:
-                    res = conn.execute(text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n,:t,:m,:d) RETURNING id"), 
-                                     {"n":n,"t":t,"m":int(m),"d":d})
-                    cid = res.scalar()
-                    steps = 1 if type_p == "Сразу" else int(m)
-                    for i in range(steps):
-                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :dt, :am, :st)"), 
-                                     {"id":cid, "dt":d+timedelta(days=30*i), "am":t/steps, "st":"ОПЛАЧЕНО" if type_p=="Сразу" else "Ожидается"})
-                    conn.commit()
-                st.rerun()
-
-if st.sidebar.button("🗑 Сбросить базу (Удалит ВСЁ)"):
-    with engine.connect() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS clients; DROP TABLE IF EXISTS schedule; DROP TABLE IF EXISTS expenses;"))
-        conn.commit()
-    st.rerun()
+    # Код добавления клиента из прошлого сообщения
+    with st.form("add"):
+        n, t, type_p = st.text_input("ФИО"), st.number_input("Сумма"), st.radio("Тип", ["Рассрочка", "Сразу"])
+        m, d = st.number_input("Месяцев", value=1), st.date_input("Дата", datetime.now())
+        if st.form_submit_button("Создать"):
+            with engine.connect() as conn:
+                res = conn.execute(text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n,:t,:m,:d) RETURNING id"), {"n":n,"t":t,"m":m,"d":d})
+                cid = res.scalar()
+                steps = 1 if type_p == "Сразу" else int(m)
+                for i in range(steps):
+                    conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :dt, :am, :st)"), 
+                                 {"id":cid, "dt":d+timedelta(days=30*i), "am":t/steps, "st":"ОПЛАЧЕНО" if type_p=="Сразу" else "Ожидается"})
+                conn.commit()
+            st.rerun()
