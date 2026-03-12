@@ -113,66 +113,49 @@ with tab_details:
         selc = st.selectbox("👤 Выберите клиента:", cllist['name'], key="detsel")
         cid = int(cllist[cllist['name'] == selc]['id'].iloc[0])
         
-        # 📋 Карточка клиента (2 колонки)
         col1, col2 = st.columns([2, 1])
         
         with col1:
             st.subheader(f"**{selc}**")
             
-            # Полные данные клиента
+            # БЕЗОПАСНО получаем данные клиента
+            client_data = {}
             with engine.connect() as conn:
-                client_data = pd.read_sql(
+                client_row = pd.read_sql(
                     text("SELECT * FROM clients WHERE id = :id"), 
                     conn, params={"id": cid}
-                ).iloc[0]
+                )
+                if not client_row.empty:
+                    client_data = client_row.iloc[0].to_dict()
             
-            # Контакты и метрики
-            with st.expander("📞 Детали клиента", expanded=True):
+            # ✅ Метрики с защитой от KeyError
+            with st.expander("📊 Основная информация", expanded=True):
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    st.metric("💰 Общая сумма", f"{client_data['totalamount']:,.0f} ₽")
-                    st.metric("📅 Начало", client_data['startdate'].strftime('%d.%m.%Y'))
+                    # Total из schedule
+                    total_sql = pd.read_sql(
+                        text("SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE clientid = :id"), 
+                        conn, params={"id": cid}
+                    )
+                    total_amount = total_sql['total'].iloc[0] if not total_sql.empty else 0
+                    st.metric("💰 Всего оплачено", f"{total_amount:,.0f} ₽")
+                
                 with col_b:
-                    st.metric("📊 Месяцев", client_data['months'])
-                    st.info(f"**Статус:** ✅ Активен")
+                    st.metric("📅 С", client_data.get('startdate', 'Не указано'))
+                    st.metric("📈 Месяцев", client_data.get('months', 0))
             
-            # Последние платежи
-            with engine.connect() as conn:
-                recent_payments = pd.read_sql(
-                    text("SELECT date, amount, status FROM schedule WHERE clientid = :id ORDER BY date DESC LIMIT 5"),
-                    conn, params={"id": cid}
-                )
-            st.subheader("💳 Последние платежи")
-            st.dataframe(recent_payments, use_container_width=True, hide_index=True)
+            # История платежей
+            payments = pd.read_sql(
+                text("SELECT date, amount, status FROM schedule WHERE clientid = :id ORDER BY date DESC LIMIT 5"),
+                conn, params={"id": cid}
+            )
+            st.subheader("💳 Последние 5 платежей")
+            st.dataframe(payments, use_container_width=True, hide_index=True)
         
         with col2:
-            st.subheader("📎 Файлы клиента")
-            
-            # Пример файлов (пока статичный)
-            files_df = pd.DataFrame({
-                'Файл': ['Договор.pdf', 'https://example.com/passport.jpg'],
-                'Тип': ['📄 Договор', '🆔 Паспорт'],
-                'Дата': ['12.03.26', '10.03.26']
-            })
-            st.dataframe(files_df, use_container_width=True, hide_index=True)
-            
-            # Загрузка файлов
-            uploaded_files = st.file_uploader("📤 Загрузить", accept_multiple_files=True, type=['pdf','jpg','png'])
-            if uploaded_files:
-                for file in uploaded_files:
-                    st.success(f"✅ {file.name}")
-            
-            # Ссылка
-            new_link = st.text_input("🔗 Добавить ссылку:")
-            if st.button("💾 Сохранить") and new_link:
-                st.success(f"🔗 Сохранена: {new_link}")
+            st.subheader("📎 Файлы")
+            st.info("👷 Функция в разработке")
 
-        # Редактирование
-        col_edit, _ = st.columns([1, 3])
-        with col_edit:
-            if st.button("✏️ Редактировать", type="secondary"):
-                st.session_state.edit_client = cid
-                st.rerun()
 
 
 # Вкладка 5: Новая сделка
