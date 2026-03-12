@@ -118,23 +118,23 @@ with tab_details:
         with col1:
             st.subheader(f"**{selc}**")
             
-            # Данные клиента (БЕЗ total_amount)
+            # ✅ ПРАВИЛЬНЫЕ имена колонок из твоей БД
             with engine.connect() as conn:
-                resdf = pd.read_sql(
-                    text(f"SELECT c.name as Клиент, "
-                         f"COALESCE((SELECT SUM(amount) FROM schedule WHERE clientid = c.id), 0) as Оплачено "
-                         f"FROM clients c WHERE c.id = {cid}"), 
+                total_df = pd.read_sql(
+                    f"SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE client_id = {cid}", 
+                    conn)
+                total = float(total_df['total'].iloc[0]) if not total_df.empty else 0
+            
+            # Простые платежи
+            with engine.connect() as conn:
+                payments = pd.read_sql(
+                    f"SELECT date, amount, status FROM schedule WHERE client_id = {cid} ORDER BY date DESC LIMIT 5", 
                     conn)
             
-            # Метрики (ПРОВЕРЕННЫЕ скобки)
-            if not resdf.empty:
-                col_a, col_b = st.columns(2)
-                col_a.metric("💰 Оплачено", f"{resdf['Оплачено'].iloc[0]:,.0f} ₽")
-                col_b.metric("📊 Сделок", 1)
-            
-            # Платежи
-            with engine.connect() as conn:
-                payments = pd.read_sql(f"SELECT date, amount, status FROM schedule WHERE clientid = {cid} ORDER BY date DESC LIMIT 5", conn)
+            # Метрики
+            col_a, col_b = st.columns(2)
+            col_a.metric("💰 Всего оплачено", f"{total:,.0f} ₽")
+            col_b.metric("📅 Платежей", len(payments))
             
             st.subheader("💳 Последние платежи")
             if not payments.empty:
@@ -145,6 +145,7 @@ with tab_details:
         with col2:
             st.subheader("📎 Файлы")
             st.info("⏳ В разработке")
+
 
 
 
