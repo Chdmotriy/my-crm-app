@@ -56,12 +56,35 @@ tab_main, tab_reestr, tab_details, tab_add = st.tabs([
 ])
 
 # --- ВКЛАДКА: АНАЛИТИКА ---
+# --- ВКЛАДКА: АНАЛИТИКА ---
 with tab_main:
+    # 1. ОБЩИЕ ПОКАЗАТЕЛИ ЗА ВСЕ ВРЕМЯ (БЕЗ ФИЛЬТРОВ)
+    with engine.connect() as conn:
+        all_time_stats = pd.read_sql("""
+            SELECT SUM(amount) as t, 
+            SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p 
+            FROM schedule
+        """, conn).iloc[0]
+    
+    at_total = all_time_stats['t'] if all_time_stats['t'] else 0
+    at_paid = all_time_stats['p'] if all_time_stats['p'] else 0
+    
+    st.subheader("💰 Итоговые показатели (Весь период)")
+    ca1, ca2, ca3 = st.columns(3)
+    ca1.metric("Общий оборот", f"{at_total:,.0f} ₽")
+    ca2.metric("Всего получено", f"{at_paid:,.0f} ₽", delta=f"{(at_paid/at_total*100 if at_total > 0 else 0):.1f}% от плана", delta_color="normal")
+    ca3.metric("Общая дебиторка", f"{(at_total - at_paid):,.0f} ₽")
+    
+    st.divider()
+
+    # 2. ФИЛЬТР ПО ГОДАМ И ДЕТАЛИЗАЦИЯ
     with engine.connect() as conn:
         years_df = pd.read_sql("SELECT DISTINCT EXTRACT(YEAR FROM date) as year FROM schedule ORDER BY year DESC", conn)
     
     available_years = [int(y) for y in years_df['year'].tolist()] if not years_df.empty else [datetime.now().year]
-    selected_year = st.selectbox("📅 Выберите год для анализа", available_years, index=0)
+    
+    col_y, col_info = st.columns([1, 2])
+    selected_year = col_y.selectbox("📅 Выберите год для детализации", available_years, index=0)
 
     with engine.connect() as conn:
         stats_query = text("""
@@ -70,19 +93,18 @@ with tab_main:
             FROM schedule 
             WHERE EXTRACT(YEAR FROM date) = :year
         """)
-        stats = pd.read_sql(stats_query, conn, params={"year": selected_year})
+        stats = pd.read_sql(stats_query, conn, params={"year": selected_year}).iloc[0]
     
-    t_year = stats['t'].iloc[0] if stats['t'].iloc[0] else 0
-    p_year = stats['p'].iloc[0] if stats['p'].iloc[0] else 0
+    t_year = stats['t'] if stats['t'] else 0
+    p_year = stats['p'] if stats['p'] else 0
     
-    st.subheader(f"Итоги за {selected_year} год")
+    st.markdown(f"#### Детализация за {selected_year} год")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Оборот за год", f"{t_year:,.0f} ₽")
-    c2.metric(f"Получено в {selected_year}", f"{p_year:,.0f} ₽")
-    c3.metric("Ожидается к получению", f"{(t_year - p_year):,.0f} ₽")
+    c1.metric("Оборот года", f"{t_year:,.0f} ₽")
+    c2.metric(f"Оплачено в {selected_year}", f"{p_year:,.0f} ₽")
+    c3.metric("Остаток года", f"{(t_year - p_year):,.0f} ₽")
     
-    st.divider()
-
+    # 3. ГРАФИК
     with engine.connect() as conn:
         chart_query = text("""
             SELECT TO_CHAR(date, 'MM') as month_num, TO_CHAR(date, 'Month') as month_name, 
@@ -104,6 +126,7 @@ with tab_main:
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info(f"Данных за {selected_year} год пока нет.")
+
 
 # --- ВКЛАДКА: РЕЕСТР ---
 with tab_reestr:
