@@ -113,38 +113,89 @@ with tab_details:
         selc = st.selectbox("👤 Выбери клиента:", cllist['name'], key="detsel")
         cid = int(cllist[cllist['name'] == selc]['id'].iloc[0])
         
-        col1, col2 = st.columns([2, 1])
+        # 📋 КАРТОЧКА КЛИЕНТА (новое)
+        col_card1, col_card2 = st.columns([2, 1])
         
-        with col1:
+        with col_card1:
             st.subheader(f"**{selc}**")
             
-            # ✅ ПРАВИЛЬНЫЕ имена колонок из твоей БД
+            # Общая сумма по клиенту
             with engine.connect() as conn:
                 total_df = pd.read_sql(
                     f"SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE client_id = {cid}", 
                     conn)
                 total = float(total_df['total'].iloc[0]) if not total_df.empty else 0
             
-            # Простые платежи
-            with engine.connect() as conn:
-                payments = pd.read_sql(
-                    f"SELECT date, amount, status FROM schedule WHERE client_id = {cid} ORDER BY date DESC LIMIT 5", 
-                    conn)
-            
-            # Метрики
             col_a, col_b = st.columns(2)
             col_a.metric("💰 Всего оплачено", f"{total:,.0f} ₽")
-            col_b.metric("📅 Платежей", len(payments))
             
-            st.subheader("💳 Последние платежи")
-            if not payments.empty:
-                st.dataframe(payments, use_container_width=True, hide_index=True)
-            else:
-                st.info("ℹ️ Нет платежей")
+            # Количество платежей
+            with engine.connect() as conn:
+                count_df = pd.read_sql(f"SELECT COUNT(*) as cnt FROM schedule WHERE client_id = {cid}", conn)
+                count = int(count_df['cnt'].iloc[0]) if not count_df.empty else 0
+            col_b.metric("📅 Платежей", count)
         
-        with col2:
+        with col_card2:
             st.subheader("📎 Файлы")
-            st.info("⏳ В разработке")
+            st.info("⏳ Загрузка файлов в разработке")
+        
+        st.divider()
+        
+        # 📊 ТВОИ ОРИГИНАЛЬНЫЕ ТАБЫ РЕДАКТИРОВАНИЯ (полностью сохранены!)
+        tp, te = st.tabs(["💳 График платежей", "📤 Расходы"])
+        
+        with tp:
+            # ✅ ТВОЙ оригинальный dataeditor для schedule
+            with engine.connect() as conn:
+                dfp = pd.read_sql(
+                    text(f"SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), 
+                    conn, params={'id': cid})
+            
+            edp = st.data_editor(
+                dfp, 
+                column_config={'id': st.column_config.NumberColumn(disabled=True)},
+                use_container_width=True, 
+                key=f"edit_payments_{cid}"
+            )
+            
+            if st.button("💾 Сохранить платежи", key=f"btn_p_{cid}"):
+                with engine.connect() as conn:
+                    conn.execute(text("DELETE FROM schedule WHERE client_id = :id"), {'id': cid})
+                    for _, r in edp.iterrows():
+                        conn.execute(
+                            text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :date, :amount, :status)"),
+                            {'id': cid, 'date': r['date'], 'amount': r['amount'], 'status': r['status']}
+                        )
+                    conn.commit()
+                st.success("✅ График платежей сохранен!")
+                st.rerun()
+        
+        with te:
+            # ✅ ТВОЙ оригинальный dataeditor для expenses
+            with engine.connect() as conn:
+                dfe = pd.read_sql(
+                    text(f"SELECT id, description, amount, status, date FROM expenses WHERE client_id = :id"), 
+                    conn, params={'id': cid})
+            
+            ede = st.data_editor(
+                dfe, 
+                column_config={'status': st.column_config.SelectboxColumn(options=[False, True])},
+                use_container_width=True, 
+                key=f"edit_expenses_{cid}"
+            )
+            
+            if st.button("💾 Сохранить расходы", key=f"btn_e_{cid}"):
+                with engine.connect() as conn:
+                    conn.execute(text("DELETE FROM expenses WHERE client_id = :id"), {'id': cid})
+                    for _, r in ede.iterrows():
+                        conn.execute(
+                            text("INSERT INTO expenses (client_id, description, amount, status, date) VALUES (:id, :desc, :amount, :status, :date)"),
+                            {'id': cid, 'desc': r['description'], 'amount': r['amount'], 'status': r['status'], 'date': r['date']}
+                        )
+                    conn.commit()
+                st.success("✅ Расходы сохранены!")
+                st.rerun()
+
 
 
 
