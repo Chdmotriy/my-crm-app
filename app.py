@@ -114,28 +114,23 @@ with tab_details:
         selc = st.selectbox("👤 Выбери клиента:", cllist['name'], key="detsel")
         cid = int(cllist[cllist['name'] == selc]['id'].iloc[0])
         
-        # 📋 КАРТОЧКА КЛИЕНТА
+        # 📋 КАРТОЧКА КЛИЕНТА (УПРОЩЕННАЯ)
         col_card1, col_card2 = st.columns([2, 1])
         
         with col_card1:
             st.subheader(f"**{selc}**")
             
-            # Сумма оплаченных
+            # ✅ ПРОСТЫЕ запросы без boolean проблем
             with engine.connect() as conn:
-                paid_df = pd.read_sql(
-                    f"SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE client_id = {cid} AND status = true", 
-                    conn)
-                total_paid = float(paid_df['total'].iloc[0]) if not paid_df.empty else 0
+                total_df = pd.read_sql(f"SELECT COALESCE(SUM(amount), 0) as total FROM schedule WHERE client_id = {cid}", conn)
+                total = float(total_df['total'].iloc[0]) if not total_df.empty else 0
             
-            # Количество платежей
             with engine.connect() as conn:
-                count_df = pd.read_sql(
-                    f"SELECT COUNT(*) as cnt FROM schedule WHERE client_id = {cid}", 
-                    conn)
+                count_df = pd.read_sql(f"SELECT COUNT(*) as cnt FROM schedule WHERE client_id = {cid}", conn)
                 count = int(count_df['cnt'].iloc[0]) if not count_df.empty else 0
             
             col_a, col_b = st.columns(2)
-            col_a.metric("💰 Оплачено", f"{total_paid:,.0f} ₽")
+            col_a.metric("💰 Всего по графику", f"{total:,.0f} ₽")
             col_b.metric("📅 Всего платежей", count)
         
         with col_card2:
@@ -148,23 +143,23 @@ with tab_details:
         tp, te = st.tabs(["💳 График платежей", "📤 Расходы"])
         
         with tp:
-            # Загрузка с порядковым номером (ОДИН запрос)
+            # ✅ ПРОСТОЙ запрос с правильными именами колонок
             with engine.connect() as conn:
-                dfp = pd.read_sql(
-                    "SELECT ROW_NUMBER() OVER (ORDER BY date) as payment_number, id, date, amount, "
-                    "CASE WHEN status THEN 'оплачено' ELSE 'ожидает оплаты' END as status "
-                    f"FROM schedule WHERE client_id = {cid} ORDER BY date", 
-                    conn)
+                dfp = pd.read_sql(f"SELECT id, date, amount, status FROM schedule WHERE client_id = {cid} ORDER BY date", conn)
+                # Добавляем порядковый номер
+                dfp['payment_number'] = range(1, len(dfp) + 1)
+                # Преобразуем status в текст
+                dfp['status_display'] = dfp['status'].map({True: 'оплачено', False: 'ожидает оплаты'}).fillna('ожидает оплаты')
             
             edp = st.data_editor(
-                dfp,
+                dfp[['payment_number', 'id', 'date', 'amount', 'status_display']],
                 num_rows="dynamic",
                 column_config={
                     "payment_number": st.column_config.NumberColumn("№", disabled=True),
                     "id": st.column_config.NumberColumn("ID БД", disabled=True),
                     "date": st.column_config.DateColumn("📅 Дата"),
                     "amount": st.column_config.NumberColumn("💰 Сумма", format="%.0f ₽"),
-                    "status": st.column_config.SelectboxColumn(
+                    "status_display": st.column_config.SelectboxColumn(
                         "📊 Статус",
                         options=["ожидает оплаты", "оплачено"],
                         required=True
@@ -180,7 +175,7 @@ with tab_details:
                     conn.execute(text(f"DELETE FROM schedule WHERE client_id = {cid}"))
                     for _, r in edp.iterrows():
                         if pd.notna(r['amount']) and pd.notna(r['date']):
-                            status_bool = (r['status'] == "оплачено")
+                            status_bool = (r['status_display'] == "оплачено")
                             conn.execute(
                                 text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:cid, :date, :amount, :status)"),
                                 {"cid": cid, "date": r['date'], "amount": float(r['amount']), "status": status_bool}
@@ -192,16 +187,16 @@ with tab_details:
         with te:
             with engine.connect() as conn:
                 dfe = pd.read_sql(f"SELECT id, description, amount, status, date FROM expenses WHERE client_id = {cid}", conn)
-                dfe['status'] = dfe['status'].map({True: 'оплачено', False: 'ожидает оплаты'})
+                dfe['status_display'] = dfe['status'].map({True: 'оплачено', False: 'ожидает оплаты'}).fillna('ожидает оплаты')
             
             ede = st.data_editor(
-                dfe,
+                dfe[['id', 'description', 'amount', 'status_display', 'date']],
                 num_rows="dynamic",
                 column_config={
                     "id": st.column_config.NumberColumn("ID", disabled=True),
                     "description": st.column_config.TextColumn("📝 Описание"),
                     "amount": st.column_config.NumberColumn("💰 Сумма", format="%.0f ₽"),
-                    "status": st.column_config.SelectboxColumn(
+                    "status_display": st.column_config.SelectboxColumn(
                         "📊 Статус",
                         options=["ожидает оплаты", "оплачено"],
                         required=True
@@ -218,7 +213,7 @@ with tab_details:
                     conn.execute(text(f"DELETE FROM expenses WHERE client_id = {cid}"))
                     for _, r in ede.iterrows():
                         if pd.notna(r['amount']) and pd.notna(r['description']):
-                            status_bool = (r['status'] == "оплачено")
+                            status_bool = (r['status_display'] == "оплачено")
                             conn.execute(
                                 text("INSERT INTO expenses (client_id, description, amount, status, date) VALUES (:cid, :desc, :amount, :status, :date)"),
                                 {"cid": cid, "desc": str(r['description']), "amount": float(r['amount']), "status": status_bool, "date": r['date']}
@@ -226,6 +221,7 @@ with tab_details:
                     conn.commit()
                 st.success("✅ Расходы сохранены!")
                 st.rerun()
+
 
 
 
