@@ -202,7 +202,6 @@ with tab_details:
 
 
 
-
 # Вкладка 5: Новая сделка
 with tab_add:
     with st.form("new_deal"):
