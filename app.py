@@ -134,72 +134,49 @@ with tab_flow:
     
     if forecast_rev < forecast_exp:
         st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые приходы в ближайшие 30 дней!")
-# Вкладка 3: Реестр (Актив/Архив + Поиск)
+# --- ВКЛАДКА 3: РЕЕСТР (С поиском и итогами) ---
 with tab_reestr:
     with engine.connect() as conn:
         query = text("""
-            SELECT 
-                c.id, c.name as "Клиент", c.contract_no as "Договор", 
-                c.total_amount as "Сумма договора", 
-                COALESCE((SELECT SUM(amount) FROM schedule WHERE client_id = c.id AND status = 'ОПЛАЧЕНО'), 0) as "Получено",
-                COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0) as "Затраты",
-                EXISTS (SELECT 1 FROM schedule WHERE client_id = c.id AND date < CURRENT_DATE AND status = 'Ожидается') as "Есть_просрочка"
+            SELECT c.id, c.name as "Клиент", c.contract_no as "Договор", c.total_amount as "Сумма договора", 
+            COALESCE((SELECT SUM(amount) FROM schedule WHERE client_id = c.id AND status = 'ОПЛАЧЕНО'), 0) as "Получено",
+            COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0) as "Затраты",
+            EXISTS (SELECT 1 FROM schedule WHERE client_id = c.id AND date < CURRENT_DATE AND status = 'Ожидается') as "Есть_просрочка"
             FROM clients c ORDER BY "Есть_просрочка" DESC, c.name ASC
         """)
         df = pd.read_sql(query, conn)
     
-    # Базовые расчеты
     df["Остаток долга"] = df["Сумма договора"] - df["Получено"]
     df["Прибыль"] = df["Сумма договора"] - df["Затраты"]
 
-    # --- БЛОК ПОИСКА И МЕТРИК ---
-    search_query = st.text_input("🔍 Поиск по имени клиента или номеру договора", "").lower()
-    
-    # Фильтрация по поисковому запросу
-    if search_query:
-        df = df[
-            df["Клиент"].str.lower().str.contains(search_query) | 
-            df["Договор"].str.lower().str.contains(search_query, na=False)
-        ]
+    search = st.text_input("🔍 Поиск по имени или договору", "").lower()
+    if search:
+        df = df[df["Клиент"].str.lower().str.contains(search) | df["Договор"].str.lower().str.contains(search, na=False)]
 
-    total_receivable = df[df["Остаток долга"] > 0]["Остаток долга"].sum()
-    overdue_count = int(df["Есть_просрочка"].sum())
+    t_rec = df[df["Остаток долга"] > 0]["Остаток долга"].sum()
+    ov_c = int(df["Есть_просрочка"].sum())
 
     m1, m2 = st.columns(2)
-    m1.metric("Дебиторка (в выборке)", f"{total_receivable:,.0f} ₽")
-    m2.metric("Просрочки", f"{overdue_count} чел.", delta=f"{overdue_count}" if overdue_count > 0 else None, delta_color="inverse")
+    m1.metric("Дебиторка в поиске", f"{t_rec:,.0f} ₽")
+    m2.metric("Просрочки", f"{ov_c} чел.", delta=f"{ov_c}" if ov_c > 0 else None, delta_color="inverse")
 
     st.divider()
-    
-    # Фильтр Актив/Архив
-    view_mode = st.radio("Статус:", ["Активные", "Архив"], horizontal=True, key="r_v_mode")
+    v_mode = st.radio("Фильтр:", ["Активные", "Архив"], horizontal=True, key="v_mode")
+    display_df = df[df["Остаток долга"] > 0].copy() if v_mode == "Активные" else df[df["Остаток долга"] <= 0].copy()
 
-    if view_mode == "Активные":
-        display_df = df[df["Остаток долга"] > 0].copy()
-    else:
-        display_df = df[df["Остаток долга"] <= 0].copy()
-
-    def style_row(row):
-        return ['background-color: #ffcccc' if (view_mode == "Активные" and row['Есть_просрочка']) else '' for _ in row]
+    def style_r(row):
+        return ['background-color: #ffcccc' if (v_mode == "Активные" and row['Есть_просрочка']) else '' for _ in row]
 
     if not display_df.empty:
-        st.dataframe(
-            display_df.style.apply(style_row, axis=1),
-            column_config={
-                "id": None, "Есть_просрочка": None,
-                "Сумма договора": st.column_config.NumberColumn(format="%d ₽"),
-                "Получено": st.column_config.NumberColumn(format="%d ₽"),
-                "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
-                "Затраты": st.column_config.NumberColumn(format="%d ₽"),
-                "Прибыль": st.column_config.NumberColumn(format="%d ₽")
-            },
-            use_container_width=True, height=500
-        )
+        st.dataframe(display_df.style.apply(style_r, axis=1), use_container_width=True, height=400,
+                     column_config={"id": None, "Есть_просрочка": None, "Сумма договора": st.column_config.NumberColumn(format="%d ₽"), 
+                                    "Получено": st.column_config.NumberColumn(format="%d ₽"), "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
+                                    "Затраты": st.column_config.NumberColumn(format="%d ₽"), "Прибыль": st.column_config.NumberColumn(format="%d ₽")})
     else:
-        st.info("По вашему запросу ничего не найдено.")
-# Вкладка 4: Карточка (Просмотр + Редактирование)
+        st.info("Нет данных")
+
+# --- ВКЛАДКА 4: КАРТОЧКА (С массовой оплатой и логами) ---
 with tab_details:
-    # 1. Загрузка списка клиентов для выбора
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
     
@@ -207,81 +184,60 @@ with tab_details:
         sel_c = st.selectbox("👤 Выберите клиента", cl_list['name'], key="det_sel")
         c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
         
-        # 2. Получение полных данных выбранного клиента
         with engine.connect() as conn:
             c_info = conn.execute(text("SELECT name, phone, contract_no, comment, total_amount FROM clients WHERE id = :id"), {"id":c_id}).fetchone()
         
-        # 3. Визуальная панель информации
-        i_col1, i_col2, i_col3 = st.columns(3)
-        with i_col1:
-            st.caption("📞 Телефон")
-            st.write(c_info[1] if c_info[1] else "—")
-        with i_col2:
-            st.caption("📄 Договор")
-            st.write(c_info[2] if c_info[2] else "—")
-        with i_col3:
-            st.caption("💰 Сумма сделки")
-            st.write(f"{c_info[4]:,.0f} ₽")
+        c1, c2, c3 = st.columns(3)
+        c1.write(f"📞 {c_info[1] if c_info[1] else '—'}")
+        c2.write(f"📄 №{c_info[2] if c_info[2] else '—'}")
+        c3.write(f"💰 {c_info[4]:,.0f} ₽")
 
-        # 4. Редактирование профиля (скрыто в спойлер)
-        with st.expander("📝 Редактировать данные профиля"):
-            with st.form(f"edit_form_{c_id}"):
-                new_n = st.text_input("ФИО", value=c_info[0])
-                new_p = st.text_input("Телефон", value=c_info[1] if c_info[1] else "")
-                new_c_no = st.text_input("№ договора", value=c_info[2] if c_info[2] else "")
-                new_comm = st.text_area("Заметка", value=c_info[3] if c_info[3] else "")
-                
-                if st.form_submit_button("Сохранить изменения"):
+        with st.expander("📝 Редактировать профиль"):
+            with st.form(f"f_{c_id}"):
+                un = st.text_input("ФИО", value=c_info[0]); up = st.text_input("Тел", value=c_info[1]); uc = st.text_input("№ дог", value=c_info[2]); ucm = st.text_area("Заметка", value=c_info[3])
+                if st.form_submit_button("Сохранить"):
                     with engine.begin() as conn:
-                        conn.execute(text("UPDATE clients SET name=:n, phone=:p, contract_no=:c_no, comment=:comm WHERE id=:id"),
-                                     {"n":new_n, "p":new_p, "c_no":new_c_no, "comm":new_comm, "id":c_id})
-                        # Логируем правку
-                        conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Правка профиля', :det)"),
-                                     {"id":c_id, "det": f"Изменены данные клиента {new_n}"})
-                    st.success("Данные обновлены")
+                        conn.execute(text("UPDATE clients SET name=:n, phone=:p, contract_no=:c, comment=:cm WHERE id=:id"), {"n":un, "p":up, "c":uc, "cm":ucm, "id":c_id})
+                        conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Правка', 'Изменен профиль')"), {"id":c_id})
                     st.rerun()
 
-        st.divider()
-
-        # 5. Кнопка массовой оплаты
         with engine.connect() as conn:
-            p_count = conn.execute(text("SELECT COUNT(*) FROM schedule WHERE client_id = :id AND status = 'Ожидается'"), {"id":c_id}).scalar()
+            p_cnt = conn.execute(text("SELECT COUNT(*) FROM schedule WHERE client_id = :id AND status = 'Ожидается'"), {"id":c_id}).scalar()
+        if p_cnt > 0 and st.button(f"✅ Оплатить всё сразу ({p_cnt} платежей)", use_container_width=True):
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE schedule SET status = 'ОПЛАЧЕНО' WHERE client_id = :id AND status = 'Ожидается'"), {"id":c_id})
+                conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Оплата', 'Массовое закрытие')"), {"id":c_id})
+            st.rerun()
 
-        if p_count > 0:
-            if st.button(f"✅ Подтвердить все оплаты ({p_count})", use_container_width=True):
-                with engine.begin() as conn:
-                    conn.execute(text("UPDATE schedule SET status = 'ОПЛАЧЕНО' WHERE client_id = :id AND status = 'Ожидается'"), {"id":c_id})
-                    conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Массовая оплата', 'Все счета закрыты одной кнопкой')"), {"id":c_id})
-                st.success("Все оплаты подтверждены")
-                st.rerun()
-
-        # 6. Таблицы: Оплаты, Затраты и История (Логи)
-        t_p, t_e, t_log = st.tabs(["💵 График платежей", "💸 Расходы по проекту", "📜 История изменений"])
-
-        with t_p:
+        t1, t2, t3 = st.tabs(["💵 Оплаты", "💸 Расходы", "📜 История"])
+        with t1:
             with engine.connect() as conn:
                 df_p = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
-            ed_p = st.data_editor(df_p, num_rows="dynamic", use_container_width=True, key=f"p_ed_{c_id}", column_config={"id": None})
-            
-            if st.button("Сохранить изменения в графике", key=f"btn_p_{c_id}"):
+            ed_p = st.data_editor(df_p, num_rows="dynamic", use_container_width=True, key=f"p_{c_id}", column_config={"id": None})
+            if st.button("Сохранить график", key=f"bp_{c_id}"):
                 with engine.begin() as conn:
                     for _, r in ed_p.iterrows():
                         if pd.notnull(r.get('id')):
                             conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:rid"), {"d":r['date'], "a":r['amount'], "s":r['status'], "rid":int(r['id'])})
-                    conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Правка графика', 'Ручное изменение таблицы платежей')"), {"id":c_id})
+                    conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'График', 'Правка таблицы')"), {"id":c_id})
                 st.rerun()
 
-        with t_e:
+        with t2:
             with engine.connect() as conn:
                 df_e = pd.read_sql(text("SELECT id, description, amount, status, date FROM expenses WHERE client_id = :id"), conn, params={"id":c_id})
-            ed_e = st.data_editor(df_e, num_rows="dynamic", use_container_width=True, key=f"e_ed_{c_id}", column_config={"id": None})
-            
-            if st.button("Сохранить расходы", key=f"btn_e_{c_id}"):
+            ed_e = st.data_editor(df_e, num_rows="dynamic", use_container_width=True, key=f"e_{c_id}", column_config={"id": None})
+            if st.button("Сохранить расходы", key=f"be_{c_id}"):
                 with engine.begin() as conn:
                     for _, r in ed_e.iterrows():
                         if pd.notnull(r.get('id')):
-                            conn.execute(text("UPDATE expenses SET description=:ds, amount=:am, status=:st
+                            conn.execute(text("UPDATE expenses SET description=:ds, amount=:am, status=:st, date=:dt WHERE id=:rid"), {"ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date'], "rid":int(r['id'])})
+                    conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Расходы', 'Правка таблицы')"), {"id":c_id})
+                st.rerun()
 
+        with t3:
+            with engine.connect() as conn:
+                l_df = pd.read_sql(text("SELECT timestamp as 'Время', action as 'Действие', details as 'Детали' FROM logs WHERE client_id = :id ORDER BY timestamp DESC"), conn, params={"id":c_id})
+            st.dataframe(l_df, use_container_width=True) if not l_df.empty else st.info("Нет истории")
 # Вкладка 5: Новая сделка (с доп. полями)
 with tab_add:
     with st.form("new_deal"):
