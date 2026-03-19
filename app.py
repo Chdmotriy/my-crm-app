@@ -105,34 +105,60 @@ with tab_reestr:
     st.dataframe(res_df, column_config={"Выручка":st.column_config.NumberColumn(format="%d ₽"), "Затраты":st.column_config.NumberColumn(format="%d ₽"), "Прибыль":st.column_config.NumberColumn(format="%d ₽")}, use_container_width=True)
 
 # Вкладка 4: Карточка (С возможностью редактирования)
+# Вкладка 4: Карточка (Безопасное редактирование)
 with tab_details:
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
+    
     if not cl_list.empty:
         sel_c = st.selectbox("Клиент", cl_list['name'], key="det_sel")
         c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
+        
         t_p, t_e = st.tabs(["💵 Оплаты", "💸 Затраты"])
+        
         with t_p:
             with engine.connect() as conn:
                 df_p = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
-            ed_p = st.data_editor(df_p, column_config={"id":None}, use_container_width=True, key=f"p_ed_{c_id}")
-            if st.button("Сохранить оплаты", key=f"btn_p_{c_id}"):
-                with engine.connect() as conn:
-                    conn.execute(text("DELETE FROM schedule WHERE client_id=:id"), {"id":c_id})
+            
+            # Редактор данных
+            ed_p = st.data_editor(df_p, num_rows="dynamic", column_config={"id": None}, use_container_width=True, key=f"p_ed_{c_id}")
+            
+            if st.button("Сохранить изменения в оплатах", key=f"btn_p_{c_id}"):
+                with engine.begin() as conn:  # engine.begin() автоматически делает commit
                     for _, r in ed_p.iterrows():
-                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id,:d,:a,:s)"), {"id":c_id,"d":r['date'],"a":r['amount'],"s":r['status']})
-                    conn.commit()
+                        if pd.notnull(r.get('id')): # Если ID есть — обновляем
+                            conn.execute(text("""
+                                UPDATE schedule SET date=:d, amount=:a, status=:s 
+                                WHERE id=:rid AND client_id=:cid
+                            """), {"d":r['date'], "a":r['amount'], "s":r['status'], "rid":int(r['id']), "cid":c_id})
+                        else: # Если ID нет — вставляем новую строку
+                            conn.execute(text("""
+                                INSERT INTO schedule (client_id, date, amount, status) 
+                                VALUES (:cid, :d, :a, :s)
+                            """), {"cid":c_id, "d":r['date'], "a":r['amount'], "s":r['status']})
+                st.success("Данные оплат обновлены")
                 st.rerun()
+
         with t_e:
             with engine.connect() as conn:
                 df_e = pd.read_sql(text("SELECT id, description, amount, status, date FROM expenses WHERE client_id = :id"), conn, params={"id":c_id})
-            ed_e = st.data_editor(df_e, column_config={"id":None, "status":{"options":["Планируется","ОПЛАЧЕНО"]}}, use_container_width=True, key=f"e_ed_{c_id}")
-            if st.button("Сохранить затраты", key=f"btn_e_{c_id}"):
-                with engine.connect() as conn:
-                    conn.execute(text("DELETE FROM expenses WHERE client_id=:id"), {"id":c_id})
+            
+            ed_e = st.data_editor(df_e, num_rows="dynamic", column_config={"id": None, "status":{"options":["Планируется","ОПЛАЧЕНО"]}}, use_container_width=True, key=f"e_ed_{c_id}")
+            
+            if st.button("Сохранить изменения в затратах", key=f"btn_e_{c_id}"):
+                with engine.begin() as conn:
                     for _, r in ed_e.iterrows():
-                        conn.execute(text("INSERT INTO expenses (client_id, description, amount, status, date) VALUES (:id,:ds,:am,:st,:dt)"), {"id":c_id,"ds":r['description'],"am":r['amount'],"st":r['status'],"dt":r['date']})
-                    conn.commit()
+                        if pd.notnull(r.get('id')):
+                            conn.execute(text("""
+                                UPDATE expenses SET description=:ds, amount=:am, status=:st, date=:dt 
+                                WHERE id=:rid AND client_id=:cid
+                            """), {"ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date'], "rid":int(r['id']), "cid":c_id})
+                        else:
+                            conn.execute(text("""
+                                INSERT INTO expenses (client_id, description, amount, status, date) 
+                                VALUES (:cid, :ds, :am, :st, :dt)
+                            """), {"cid":c_id, "ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date']})
+                st.success("Данные затрат обновлены")
                 st.rerun()
 
 # Вкладка 5: Новая сделка
