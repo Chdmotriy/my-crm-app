@@ -109,7 +109,7 @@ with tab_reestr:
     res_df['Прибыль'] = res_df['Выручка'] - res_df['Затраты']
     st.dataframe(res_df, column_config={"Выручка":st.column_config.NumberColumn(format="%d ₽"), "Затраты":st.column_config.NumberColumn(format="%d ₽"), "Прибыль":st.column_config.NumberColumn(format="%d ₽")}, use_container_width=True)
 
-# Вкладка 4: Карточка (С возможностью редактирования)
+# Вкладка 4: Карточка (Исправленные отступы и сохранение)
 with tab_details:
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
@@ -120,64 +120,48 @@ with tab_details:
         
         t_p, t_e = st.tabs(["💵 Оплаты", "💸 Затраты"])
         
+        # --- ПОДВКЛАДКА: ОПЛАТЫ ---
         with t_p:
-    with engine.connect() as conn:
-        df_p = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
-    
-    # Настройка колонок: добавляем выбор из списка для статуса
-    ed_p = st.data_editor(
-        df_p, 
-        num_rows="dynamic", 
-        column_config={
-            "id": None, 
-            "status": st.column_config.SelectboxColumn(
-                "Статус",
-                options=["Ожидается", "ОПЛАЧЕНО"],
-                required=True
+            with engine.connect() as conn:
+                df_p = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
+            
+            ed_p = st.data_editor(
+                df_p, 
+                num_rows="dynamic", 
+                column_config={"id": None, "status": st.column_config.SelectboxColumn("Статус", options=["Ожидается", "ОПЛАЧЕНО"], required=True)}, 
+                use_container_width=True, 
+                key=f"p_ed_{c_id}"
             )
-        }, 
-        use_container_width=True, 
-        key=f"p_ed_{c_id}"
-    )
-    
-    if st.button("Сохранить изменения в оплатах", key=f"btn_p_{c_id}"):
-        with engine.begin() as conn:
-            for _, r in ed_p.iterrows():
-                # Проверяем наличие ID (существующая запись)
-                if pd.notnull(r.get('id')):
-                    conn.execute(text("""
-                        UPDATE schedule SET date=:d, amount=:a, status=:s 
-                        WHERE id=:rid AND client_id=:cid
-                    """), {"d":r['date'], "a":r['amount'], "s":r['status'], "rid":int(r['id']), "cid":c_id})
-                # Если ID нет и заполнены данные (новая запись)
-                elif pd.notnull(r.get('date')) and pd.notnull(r.get('amount')):
-                    conn.execute(text("""
-                        INSERT INTO schedule (client_id, date, amount, status) 
-                        VALUES (:cid, :d, :a, :s)
-                    """), {"cid":c_id, "d":r['date'], "a":r['amount'], "s":r.get('status', 'Ожидается')})
-        st.success("Данные оплат сохранены!")
-        st.rerun()
+            
+            if st.button("Сохранить оплаты", key=f"btn_p_{c_id}"):
+                with engine.begin() as conn:
+                    for _, r in ed_p.iterrows():
+                        if pd.notnull(r.get('id')):
+                            conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:rid"), {"d":r['date'], "a":r['amount'], "s":r['status'], "rid":int(r['id'])})
+                        elif pd.notnull(r.get('date')):
+                            conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:cid, :d, :a, :s)"), {"cid":c_id, "d":r['date'], "a":r['amount'], "s":r.get('status', 'Ожидается')})
+                st.rerun()
 
+        # --- ПОДВКЛАДКА: ЗАТРАТЫ (Исправлено здесь) ---
         with t_e:
             with engine.connect() as conn:
                 df_e = pd.read_sql(text("SELECT id, description, amount, status, date FROM expenses WHERE client_id = :id"), conn, params={"id":c_id})
             
-            ed_e = st.data_editor(df_e, num_rows="dynamic", column_config={"id": None, "status":{"options":["Планируется","ОПЛАЧЕНО"]}}, use_container_width=True, key=f"e_ed_{c_id}")
+            ed_e = st.data_editor(
+                df_e, 
+                num_rows="dynamic", 
+                column_config={"id": None, "status": st.column_config.SelectboxColumn("Статус", options=["Планируется", "ОПЛАЧЕНО"], required=True)}, 
+                use_container_width=True, 
+                key=f"e_ed_{c_id}"
+            )
             
-            if st.button("Сохранить изменения в затратах", key=f"btn_e_{c_id}"):
+            if st.button("Сохранить затраты", key=f"btn_e_{c_id}"):
                 with engine.begin() as conn:
                     for _, r in ed_e.iterrows():
                         if pd.notnull(r.get('id')):
-                            conn.execute(text("""
-                                UPDATE expenses SET description=:ds, amount=:am, status=:st, date=:dt 
-                                WHERE id=:rid AND client_id=:cid
-                            """), {"ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date'], "rid":int(r['id']), "cid":c_id})
-                        else:
-                            conn.execute(text("""
-                                INSERT INTO expenses (client_id, description, amount, status, date) 
-                                VALUES (:cid, :ds, :am, :st, :dt)
-                            """), {"cid":c_id, "ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date']})
-                st.success("Данные затрат обновлены")
+                            conn.execute(text("UPDATE expenses SET description=:ds, amount=:am, status=:st, date=:dt WHERE id=:rid"), {"ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date'], "rid":int(r['id'])})
+                        elif pd.notnull(r.get('description')):
+                            conn.execute(text("INSERT INTO expenses (client_id, description, amount, status, date) VALUES (:cid, :ds, :am, :st, :dt)"), {"cid":c_id, "ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date']})
                 st.rerun()
 
 # Вкладка 5: Новая сделка
