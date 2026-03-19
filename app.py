@@ -129,11 +129,8 @@ with tab_flow:
     
     if forecast_rev < forecast_exp:
         st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые приходы в ближайшие 30 дней!")
-# Вкладка 3: Реестр (Разделение на Актив и Архив)
+# Вкладка 3: Реестр (Актив/Архив + Итоги по дебиторке)
 with tab_reestr:
-    # Выбор режима отображения
-    view_mode = st.radio("Показать клиентов:", ["Активные (есть долг)", "Архив (оплачено 100%)"], horizontal=True, key="reestr_mode")
-
     with engine.connect() as conn:
         query = text("""
             SELECT 
@@ -151,9 +148,22 @@ with tab_reestr:
         """)
         df = pd.read_sql(query, conn)
     
-    # Расчет остатка и прибыли
+    # Расчеты
     df["Остаток долга"] = df["Сумма договора"] - df["Получено"]
     df["Прибыль"] = df["Сумма договора"] - df["Затраты"]
+
+    # Метрики над таблицей (только по активным долгам)
+    total_receivable = df[df["Остаток долга"] > 0]["Остаток долга"].sum()
+    overdue_count = df[df["Есть_просroчка"] == True]["Клиент"].count()
+
+    m_col1, m_col2 = st.columns(2)
+    m_col1.metric("Общая дебиторка (ожидается)", f"{total_receivable:,.0f} ₽")
+    m_col2.metric("Клиентов с просрочкой", f"{overdue_count} чел.", delta=f"{overdue_count}" if overdue_count > 0 else None, delta_color="inverse")
+
+    st.divider()
+
+    # Выбор режима отображения
+    view_mode = st.radio("Показать клиентов:", ["Активные (есть долг)", "Архив (оплачено 100%)"], horizontal=True, key="reestr_mode")
 
     # Логика фильтрации
     if view_mode == "Активные (есть долг)":
@@ -161,32 +171,15 @@ with tab_reestr:
     else:
         display_df = df[df["Остаток долга"] <= 0].copy()
 
-    # Стилизация
+    # Стилизация просрочки
     def highlight_debt(row):
-        # Красим только в активном списке, если есть техническая просрочка по дате
         if view_mode == "Активные (есть долг)" and row['Есть_просрочка']:
             return ['background-color: #ffcccc'] * len(row)
         return [''] * len(row)
 
     if not display_df.empty:
         st.dataframe(
-            display_df.style.apply(highlight_debt, axis=1),
-            column_config={
-                "id": None,
-                "Сумма договора": st.column_config.NumberColumn(format="%d ₽"),
-                "Получено": st.column_config.NumberColumn(format="%d ₽"),
-                "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
-                "Затраты": st.column_config.NumberColumn(format="%d ₽"),
-                "Прибыль": st.column_config.NumberColumn(format="%d ₽"),
-                "Есть_просрочка": None
-            },
-            use_container_width=True
-        )
-        
-        # Краткая сводка под таблицей
-        st.caption(f"Всего записей в этом списке: {len(display_df)}")
-    else:
-        st.info("В этом списке пока пусто.")
+            display_df.style.apply(highlight_
 # Вкладка 4: Карточка (Исправленные отступы и сохранение)
 with tab_details:
     with engine.connect() as conn:
