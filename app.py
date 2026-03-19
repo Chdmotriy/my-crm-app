@@ -236,18 +236,35 @@ with tab_details:
                             conn.execute(text("INSERT INTO expenses (client_id, description, amount, status, date) VALUES (:cid, :ds, :am, :st, :dt)"), {"cid":c_id, "ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date']})
                 st.rerun()
 
-# Вкладка 5: Новая сделка
+# Вкладка 5: Новая сделка (с доп. полями)
 with tab_add:
     with st.form("new_deal"):
-        n, t = st.text_input("ФИО"), st.number_input("Сумма", value=100000.0)
-        tp = st.radio("Тип", ["Рассрочка", "Сразу"], horizontal=True)
-        m, d = st.number_input("Месяцев", min_value=1, value=1), st.date_input("Дата", datetime.now())
-        if st.form_submit_button("Создать"):
+        col1, col2 = st.columns(2)
+        with col1:
+            n = st.text_input("ФИО клиента")
+            p = st.text_input("Телефон")
+        with col2:
+            t = st.number_input("Сумма договора", value=100000.0)
+            c_no = st.text_input("Номер договора")
+            
+        tp = st.radio("Тип оплаты", ["Рассрочка", "Сразу"], horizontal=True)
+        m = st.number_input("Кол-во платежей (месяцев)", min_value=1, value=1)
+        d = st.date_input("Дата первого платежа", datetime.now())
+        comm = st.text_area("Комментарий к сделке")
+        
+        if st.form_submit_button("Создать сделку"):
             if n:
-                with engine.connect() as conn:
-                    cid = conn.execute(text("INSERT INTO clients (name, total_amount, months, start_date) VALUES (:n,:t,:m,:d) RETURNING id"), {"n":n,"t":t,"m":int(m),"d":d}).scalar()
+                with engine.begin() as conn:
+                    cid = conn.execute(text("""
+                        INSERT INTO clients (name, total_amount, months, start_date, phone, contract_no, comment) 
+                        VALUES (:n, :t, :m, :d, :p, :c_no, :comm) RETURNING id
+                    """), {"n":n, "t":t, "m":int(m), "d":d, "p":p, "c_no":c_no, "comm":comm}).scalar()
+                    
                     steps = 1 if tp == "Сразу" else int(m)
+                    amount_per_step = round(t / steps, 2)
                     for i in range(steps):
-                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:id, :dt, :am, :st)"), {"id":cid, "dt":d+timedelta(days=30*i), "am":t/steps, "st":"ОПЛАЧЕНО" if tp=="Сразу" else "Ожидается"})
-                    conn.commit()
+                        p_date = d + timedelta(days=i*30)
+                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:cid, :dt, :am, 'Ожидается')"),
+                                     {"cid":cid, "dt":p_date, "am":amount_per_step})
+                st.success(f"Клиент {n} успешно добавлен!")
                 st.rerun()
