@@ -129,14 +129,18 @@ with tab_flow:
     
     if forecast_rev < forecast_exp:
         st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые приходы в ближайшие 30 дней!")
-# Вкладка 3: Реестр (с подсветкой просрочек)
+# Вкладка 3: Реестр (Разделение на Актив и Архив)
 with tab_reestr:
+    # Выбор режима отображения
+    view_mode = st.radio("Показать клиентов:", ["Активные (есть долг)", "Архив (оплачено 100%)"], horizontal=True, key="reestr_mode")
+
     with engine.connect() as conn:
-        # Получаем данные: клиент, общая сумма, затраты и наличие просроченных платежей
         query = text("""
             SELECT 
+                c.id,
                 c.name as "Клиент", 
-                c.total_amount as "Выручка", 
+                c.total_amount as "Сумма договора", 
+                COALESCE((SELECT SUM(amount) FROM schedule WHERE client_id = c.id AND status = 'ОПЛАЧЕНО'), 0) as "Получено",
                 COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0) as "Затраты",
                 EXISTS (
                     SELECT 1 FROM schedule 
@@ -145,30 +149,44 @@ with tab_reestr:
             FROM clients c 
             ORDER BY "Есть_просрочка" DESC, c.name ASC
         """)
-        res_df = pd.read_sql(query, conn)
+        df = pd.read_sql(query, conn)
     
-    res_df['Прибыль'] = res_df['Выручка'] - res_df['Затраты']
-    
-    # Функция для окрашивания строк
-    def highlight_debt(row):
-        return ['background-color: #ffcccc' if row['Есть_просрочка'] else '' for _ in row]
+    # Расчет остатка и прибыли
+    df["Остаток долга"] = df["Сумма договора"] - df["Получено"]
+    df["Прибыль"] = df["Сумма договора"] - df["Затраты"]
 
-    # Отображение с применением стиля
-    st.subheader("Список клиентов и финансовое состояние")
-    st.dataframe(
-        res_df.style.apply(highlight_debt, axis=1),
-        column_config={
-            "Выручка": st.column_config.NumberColumn(format="%d ₽"),
-            "Затраты": st.column_config.NumberColumn(format="%d ₽"),
-            "Прибыль": st.column_config.NumberColumn(format="%d ₽"),
-            "Есть_просрочка": None  # Скрываем служебную колонку
-        },
-        use_container_width=True,
-        height=400
-    )
-    
-    if res_df['Есть_просрочка'].any():
-        st.warning("⚠️ Красным выделены клиенты, у которых есть неоплаченные счета с прошедшей датой.")
+    # Логика фильтрации
+    if view_mode == "Активные (есть долг)":
+        display_df = df[df["Остаток долга"] > 0].copy()
+    else:
+        display_df = df[df["Остаток долга"] <= 0].copy()
+
+    # Стилизация
+    def highlight_debt(row):
+        # Красим только в активном списке, если есть техническая просрочка по дате
+        if view_mode == "Активные (есть долг)" and row['Есть_просрочка']:
+            return ['background-color: #ffcccc'] * len(row)
+        return [''] * len(row)
+
+    if not display_df.empty:
+        st.dataframe(
+            display_df.style.apply(highlight_debt, axis=1),
+            column_config={
+                "id": None,
+                "Сумма договора": st.column_config.NumberColumn(format="%d ₽"),
+                "Получено": st.column_config.NumberColumn(format="%d ₽"),
+                "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
+                "Затраты": st.column_config.NumberColumn(format="%d ₽"),
+                "Прибыль": st.column_config.NumberColumn(format="%d ₽"),
+                "Есть_просрочка": None
+            },
+            use_container_width=True
+        )
+        
+        # Краткая сводка под таблицей
+        st.caption(f"Всего записей в этом списке: {len(display_df)}")
+    else:
+        st.info("В этом списке пока пусто.")
 # Вкладка 4: Карточка (Исправленные отступы и сохранение)
 with tab_details:
     with engine.connect() as conn:
