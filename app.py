@@ -181,7 +181,7 @@ with tab_reestr:
         )
     else:
         st.info("Список пуст.")
-# Вкладка 4: Карточка (с контактными данными)
+# Вкладка 4: Карточка (Просмотр + Редактирование)
 with tab_details:
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
@@ -190,23 +190,42 @@ with tab_details:
         sel_c = st.selectbox("Выберите клиента", cl_list['name'], key="det_sel")
         c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
         
-        # Получаем расширенные данные клиента
+        # Получаем текущие данные клиента
         with engine.connect() as conn:
-            c_info = conn.execute(text("SELECT phone, contract_no, comment FROM clients WHERE id = :id"), {"id":c_id}).fetchone()
+            c_info = conn.execute(text("SELECT name, phone, contract_no, comment, total_amount FROM clients WHERE id = :id"), {"id":c_id}).fetchone()
         
-        # Отображение инфо-панели
+        # Отображение данных
         i_col1, i_col2, i_col3 = st.columns(3)
         with i_col1:
             st.caption("📞 Телефон")
-            st.write(c_info[0] if c_info[0] else "—")
+            st.write(c_info[1] if c_info[1] else "—")
         with i_col2:
             st.caption("📄 Договор")
-            st.write(c_info[1] if c_info[1] else "—")
-        with i_col3:
-            st.caption("📝 Заметка")
             st.write(c_info[2] if c_info[2] else "—")
+        with i_col3:
+            st.caption("💰 Сумма сделки")
+            st.write(f"{c_info[4]:,.0f} ₽")
+
+        # Форма редактирования (скрытая в экспандер)
+        with st.expander("📝 Редактировать данные профиля"):
+            with st.form(f"edit_client_{c_id}"):
+                new_n = st.text_input("ФИО", value=c_info[0])
+                new_p = st.text_input("Телефон", value=c_info[1] if c_info[1] else "")
+                new_c_no = st.text_input("№ договора", value=c_info[2] if c_info[2] else "")
+                new_comm = st.text_area("Заметка", value=c_info[3] if c_info[3] else "")
+                
+                if st.form_submit_button("Сохранить изменения"):
+                    with engine.begin() as conn:
+                        conn.execute(text("""
+                            UPDATE clients 
+                            SET name=:n, phone=:p, contract_no=:c_no, comment=:comm 
+                            WHERE id=:id
+                        """), {"n":new_n, "p":new_p, "c_no":new_c_no, "comm":new_comm, "id":c_id})
+                    st.success("Данные обновлены")
+                    st.rerun()
         
         st.divider()
+        # Далее идут табы t_p, t_e (Оплаты и Затраты)
         
         # Далее идут твои табы t_p, t_e (Оплаты и Затраты) без изменений...
         
