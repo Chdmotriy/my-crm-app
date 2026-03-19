@@ -236,9 +236,26 @@ with tab_details:
                     st.rerun()
         
         st.divider()
+        # --- БЛОК МАССОВЫХ ОПЕРАЦИЙ ---
+        with engine.connect() as conn:
+            pending_count = conn.execute(text(
+                "SELECT COUNT(*) FROM schedule WHERE client_id = :id AND status = 'Ожидается'"
+            ), {"id": c_id}).scalar()
+
+        if pending_count > 0:
+            st.info(f"У клиента есть {pending_count} ожидаемых платежей.")
+            if st.button(f"✅ Подтвердить все оплаты для {sel_c}", use_container_width=True):
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "UPDATE schedule SET status = 'ОПЛАЧЕНО' WHERE client_id = :id AND status = 'Ожидается'"
+                    ), {"id": c_id})
+                st.success(f"Все платежи клиента {sel_c} переведены в статус ОПЛАЧЕНО")
+                st.rerun()
+        else:
+            st.success("Все запланированные платежи по этому клиенту уже внесены.")
+
+        st.divider()
         # Далее идут табы t_p, t_e (Оплаты и Затраты)
-        
-        # Далее идут твои табы t_p, t_e (Оплаты и Затраты) без изменений...
         
         t_p, t_e = st.tabs(["💵 Оплаты", "💸 Затраты"])
         
