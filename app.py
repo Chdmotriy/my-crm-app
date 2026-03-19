@@ -52,8 +52,10 @@ tab_cal, tab_flow, tab_reestr, tab_details, tab_add = st.tabs([
 ])
 
 # Вкладка 1: Интерактивный календарь
+# Вкладка 1: Интерактивный календарь
 with tab_cal:
     with engine.connect() as conn:
+        # Тянем только неоплаченные, чтобы не захламлять календарь выполненными задачами
         cal_inc = pd.read_sql("SELECT s.id, c.name, s.date, s.amount FROM schedule s JOIN clients c ON s.client_id = c.id WHERE s.status = 'Ожидается'", conn)
         cal_exp = pd.read_sql("SELECT id, description as name, date, amount FROM expenses WHERE status = 'Планируется'", conn)
     
@@ -65,7 +67,6 @@ with tab_cal:
 
     cal_res = st_calendar(events=events, options={"locale": "ru", "initialView": "dayGridMonth", "selectable": True}, key="main_calendar")
     
-    # ОБРАБОТКА КЛИКА (ИСПРАВЛЕНО)
     if cal_res and cal_res.get("eventClick"):
         clicked_event = cal_res["eventClick"]["event"]
         ev_id_str = clicked_event["id"]
@@ -73,15 +74,20 @@ with tab_cal:
         ev_title = clicked_event["title"]
         
         st.write("---")
-        st.subheader("⚙️ Управление событием")
+        st.subheader("⚙️ Быстрое действие")
         st.info(f"Выбрано: **{ev_title}**")
         
-        if st.button("✅ Отметить как выполненное", use_container_width=True, type="primary"):
+        # Одна кнопка для мгновенного изменения статуса
+        if st.button("✅ Подтвердить оплату (Перевести в ОПЛАЧЕНО)", use_container_width=True, type="primary"):
             target_table = "schedule" if ev_type == "inc" else "expenses"
-            with engine.connect() as conn:
-                conn.execute(text(f"UPDATE {target_table} SET status = 'ОПЛАЧЕНО' WHERE id = :id"), {"id": int(ev_id)})
-                conn.commit()
-            st.success("Готово! Обновляем данные...")
+            new_status = "ОПЛАЧЕНО"
+            
+            with engine.begin() as conn:
+                conn.execute(
+                    text(f"UPDATE {target_table} SET status = :status WHERE id = :id"),
+                    {"status": new_status, "id": int(ev_id)}
+                )
+            st.success(f"Статус обновлен! Теперь в реестре и карточке этот платеж отмечен как оплаченный.")
             st.rerun()
 
 # Вкладка 2: Аналитика
