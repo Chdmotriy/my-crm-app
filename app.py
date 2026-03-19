@@ -114,24 +114,21 @@ with tab_flow:
     st.subheader("🔮 Прогноз на ближайшие 30 дней")
     
     with engine.connect() as conn:
-        # Считаем все 'Ожидается' и 'Планируется' на 30 дней вперед
-        forecast_rev = conn.execute(text("""
-            SELECT SUM(amount) FROM schedule 
-            WHERE status = 'Ожидается' AND date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
-        """)).scalar() or 0
+        # Прогноз приходов
+        f_rev_res = conn.execute(text("SELECT SUM(amount) FROM schedule WHERE status = 'Ожидается' AND date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'")).scalar()
+        forecast_rev = float(f_rev_res) if f_rev_res else 0.0
         
-        forecast_exp = conn.execute(text("""
-            SELECT SUM(amount) FROM expenses 
-            WHERE status = 'Планируется' AND date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
-        """)).scalar() or 0
+        # Прогноз расходов
+        f_exp_res = conn.execute(text("SELECT SUM(amount) FROM expenses WHERE status = 'Планируется' AND date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'")).scalar()
+        forecast_exp = float(f_exp_res) if f_exp_res else 0.0
 
-    f_col1, f_col2, f_col3 = st.columns(3)
-    f_col1.metric("Ожидаемый приход", f"{forecast_rev:,.0f} ₽")
-    f_col2.metric("Плановые расходы", f"{forecast_exp:,.0f} ₽", delta=f"-{forecast_exp:,.0f}", delta_color="inverse")
-    f_col3.metric("Прогноз остатка", f"{(forecast_rev - forecast_exp):,.0f} ₽")
+    f_c1, f_c2, f_c3 = st.columns(3)
+    f_c1.metric("Ожидаемый приход", f"{forecast_rev:,.0f} ₽")
+    f_c2.metric("Плановые расходы", f"{forecast_exp:,.0f} ₽", delta=f"-{forecast_exp:,.0f}", delta_color="inverse")
+    f_c3.metric("Прогноз остатка", f"{(forecast_rev - forecast_exp):,.0f} ₽")
     
     if forecast_rev < forecast_exp:
-        st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые при
+        st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые приходы в ближайшие 30 дней!")
 # Вкладка 3: Реестр (с подсветкой просрочек)
 with tab_reestr:
     with engine.connect() as conn:
