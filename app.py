@@ -89,19 +89,49 @@ with tab_cal:
             st.success(f"Статус обновлен! Теперь в реестре и карточке этот платеж отмечен как оплаченный.")
             st.rerun()
 
-# Вкладка 2: Аналитика
+# Вкладка 2: Аналитика и Прогноз
 with tab_flow:
     with engine.connect() as conn:
         years_df = pd.read_sql("SELECT DISTINCT EXTRACT(YEAR FROM date) as year FROM schedule ORDER BY year DESC", conn)
+    
     available_years = [int(y) for y in years_df['year'].tolist()] if not years_df.empty else [datetime.now().year]
-    sel_year = st.selectbox("Выберите год", available_years)
+    sel_year = st.selectbox("Выберите год для графиков", available_years)
+    
     with engine.connect() as conn:
         rev_m = pd.read_sql(text("SELECT TO_CHAR(date, 'Month') as month, TO_CHAR(date, 'MM') as m_num, SUM(amount) as rev FROM schedule WHERE EXTRACT(YEAR FROM date) = :y GROUP BY month, m_num"), conn, params={"y": sel_year})
         exp_m = pd.read_sql(text("SELECT TO_CHAR(date, 'Month') as month, TO_CHAR(date, 'MM') as m_num, SUM(amount) as exp FROM expenses WHERE EXTRACT(YEAR FROM date) = :y GROUP BY month, m_num"), conn, params={"y": sel_year})
+    
     if not rev_m.empty:
+        st.subheader(f"Статистика за {sel_year} год")
         chart_data = pd.merge(rev_m, exp_m, on=['month', 'm_num'], how='outer').fillna(0).sort_values('m_num')
-        st.plotly_chart(px.bar(chart_data, x='month', y=['rev', 'exp'], barmode='group', color_discrete_map={'rev':'#28a745','exp':'#dc3545'}), use_container_width=True)
+        st.plotly_chart(px.bar(chart_data, x='month', y=['rev', 'exp'], barmode='group', 
+                               labels={'value': 'Сумма (₽)', 'month': 'Месяц'},
+                               color_discrete_map={'rev':'#28a745','exp':'#dc3545'}), use_container_width=True)
 
+    st.divider()
+    
+    # --- БЛОК ПРОГНОЗА НА 30 ДНЕЙ ---
+    st.subheader("🔮 Прогноз на ближайшие 30 дней")
+    
+    with engine.connect() as conn:
+        # Считаем все 'Ожидается' и 'Планируется' на 30 дней вперед
+        forecast_rev = conn.execute(text("""
+            SELECT SUM(amount) FROM schedule 
+            WHERE status = 'Ожидается' AND date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+        """)).scalar() or 0
+        
+        forecast_exp = conn.execute(text("""
+            SELECT SUM(amount) FROM expenses 
+            WHERE status = 'Планируется' AND date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+        """)).scalar() or 0
+
+    f_col1, f_col2, f_col3 = st.columns(3)
+    f_col1.metric("Ожидаемый приход", f"{forecast_rev:,.0f} ₽")
+    f_col2.metric("Плановые расходы", f"{forecast_exp:,.0f} ₽", delta=f"-{forecast_exp:,.0f}", delta_color="inverse")
+    f_col3.metric("Прогноз остатка", f"{(forecast_rev - forecast_exp):,.0f} ₽")
+    
+    if forecast_rev < forecast_exp:
+        st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые при
 # Вкладка 3: Реестр (с подсветкой просрочек)
 with tab_reestr:
     with engine.connect() as conn:
