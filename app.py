@@ -149,31 +149,43 @@ with tab_reestr:
     df["Остаток долга"] = df["Сумма договора"] - df["Получено"]
     df["Прибыль"] = df["Сумма договора"] - df["Затраты"]
 
-    search = st.text_input("🔍 Поиск по имени или договору", "").lower()
+    # Поиск и фильтрация
+    search = st.text_input("🔍 Быстрый поиск (имя или номер договора)", "").lower()
     if search:
         df = df[df["Клиент"].str.lower().str.contains(search) | df["Договор"].str.lower().str.contains(search, na=False)]
 
+    # Метрики
     t_rec = df[df["Остаток долга"] > 0]["Остаток долга"].sum()
     ov_c = int(df["Есть_просрочка"].sum())
 
     m1, m2 = st.columns(2)
-    m1.metric("Дебиторка в поиске", f"{t_rec:,.0f} ₽")
-    m2.metric("Просрочки", f"{ov_c} чел.", delta=f"{ov_c}" if ov_c > 0 else None, delta_color="inverse")
+    m1.metric("Дебиторка (в поиске)", f"{t_rec:,.0f} ₽")
+    m2.metric("Клиентов с просрочкой", f"{ov_c} чел.", delta=f"{ov_c}" if ov_c > 0 else None, delta_color="inverse")
 
     st.divider()
-    v_mode = st.radio("Фильтр:", ["Активные", "Архив"], horizontal=True, key="v_mode")
-    display_df = df[df["Остаток долга"] > 0].copy() if v_mode == "Активные" else df[df["Остаток долга"] <= 0].copy()
+    
+    v_mode = st.radio("Показать:", ["Активные сделки", "Завершенные (Архив)"], horizontal=True)
+    display_df = df[df["Остаток долга"] > 0].copy() if v_mode == "Активные сделки" else df[df["Остаток долга"] <= 0].copy()
 
     def style_r(row):
-        return ['background-color: #ffcccc' if (v_mode == "Активные" and row['Есть_просрочка']) else '' for _ in row]
+        return ['background-color: #ffcccc' if (v_mode == "Активные сделки" and row['Есть_просрочка']) else '' for _ in row]
 
     if not display_df.empty:
-        st.dataframe(display_df.style.apply(style_r, axis=1), use_container_width=True, height=400,
-                     column_config={"id": None, "Есть_просрочка": None, "Сумма договора": st.column_config.NumberColumn(format="%d ₽"), 
-                                    "Получено": st.column_config.NumberColumn(format="%d ₽"), "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
-                                    "Затраты": st.column_config.NumberColumn(format="%d ₽"), "Прибыль": st.column_config.NumberColumn(format="%d ₽")})
+        st.dataframe(
+            display_df.style.apply(style_r, axis=1),
+            use_container_width=True,
+            height=450,
+            column_config={
+                "id": None, "Есть_просрочка": None,
+                "Сумма договора": st.column_config.NumberColumn(format="%d ₽"),
+                "Получено": st.column_config.NumberColumn(format="%d ₽"),
+                "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
+                "Затраты": st.column_config.NumberColumn(format="%d ₽"),
+                "Прибыль": st.column_config.NumberColumn(format="%d ₽")
+            }
+        )
     else:
-        st.info("Нет данных")
+        st.info("Данные отсутствуют или не соответствуют фильтру.")
 
 # --- ВКЛАДКА 4: КАРТОЧКА (ПОЛНАЯ ВЕРСИЯ) ---
 with tab_details:
