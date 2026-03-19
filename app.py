@@ -129,12 +129,13 @@ with tab_flow:
     
     if forecast_rev < forecast_exp:
         st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые приходы в ближайшие 30 дней!")
-# Вкладка 3: Реестр (Исправленный синтаксис)
+# Вкладка 3: Реестр (Актив/Архив + Поиск)
 with tab_reestr:
     with engine.connect() as conn:
         query = text("""
             SELECT 
-                c.id, c.name as "Клиент", c.total_amount as "Сумма договора", 
+                c.id, c.name as "Клиент", c.contract_no as "Договор", 
+                c.total_amount as "Сумма договора", 
                 COALESCE((SELECT SUM(amount) FROM schedule WHERE client_id = c.id AND status = 'ОПЛАЧЕНО'), 0) as "Получено",
                 COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0) as "Затраты",
                 EXISTS (SELECT 1 FROM schedule WHERE client_id = c.id AND date < CURRENT_DATE AND status = 'Ожидается') as "Есть_просрочка"
@@ -142,29 +143,39 @@ with tab_reestr:
         """)
         df = pd.read_sql(query, conn)
     
+    # Базовые расчеты
     df["Остаток долга"] = df["Сумма договора"] - df["Получено"]
     df["Прибыль"] = df["Сумма договора"] - df["Затраты"]
 
-    # Метрики
+    # --- БЛОК ПОИСКА И МЕТРИК ---
+    search_query = st.text_input("🔍 Поиск по имени клиента или номеру договора", "").lower()
+    
+    # Фильтрация по поисковому запросу
+    if search_query:
+        df = df[
+            df["Клиент"].str.lower().str.contains(search_query) | 
+            df["Договор"].str.lower().str.contains(search_query, na=False)
+        ]
+
     total_receivable = df[df["Остаток долга"] > 0]["Остаток долга"].sum()
     overdue_count = int(df["Есть_просрочка"].sum())
 
     m1, m2 = st.columns(2)
-    m1.metric("Общая дебиторка", f"{total_receivable:,.0f} ₽")
-    m2.metric("Клиентов с просрочкой", f"{overdue_count} чел.", delta=f"{overdue_count}" if overdue_count > 0 else None, delta_color="inverse")
+    m1.metric("Дебиторка (в выборке)", f"{total_receivable:,.0f} ₽")
+    m2.metric("Просрочки", f"{overdue_count} чел.", delta=f"{overdue_count}" if overdue_count > 0 else None, delta_color="inverse")
 
     st.divider()
-    view_mode = st.radio("Фильтр:", ["Активные (есть долг)", "Архив (оплачено)"], horizontal=True, key="r_v_mode")
+    
+    # Фильтр Актив/Архив
+    view_mode = st.radio("Статус:", ["Активные", "Архив"], horizontal=True, key="r_v_mode")
 
-    # Фильтрация
-    if view_mode == "Активные (есть долг)":
+    if view_mode == "Активные":
         display_df = df[df["Остаток долга"] > 0].copy()
     else:
         display_df = df[df["Остаток долга"] <= 0].copy()
 
-    # Стилизация (в одну строку во избежание разрывов)
     def style_row(row):
-        return ['background-color: #ffcccc' if (view_mode == "Активные (есть долг)" and row['Есть_просрочка']) else '' for _ in row]
+        return ['background-color: #ffcccc' if (view_mode == "Активные" and row['Есть_просрочка']) else '' for _ in row]
 
     if not display_df.empty:
         st.dataframe(
@@ -180,7 +191,7 @@ with tab_reestr:
             use_container_width=True, height=500
         )
     else:
-        st.info("Список пуст.")
+        st.info("По вашему запросу ничего не найдено.")
 # Вкладка 4: Карточка (Просмотр + Редактирование)
 with tab_details:
     with engine.connect() as conn:
