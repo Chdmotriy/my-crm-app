@@ -181,14 +181,34 @@ with tab_reestr:
         )
     else:
         st.info("Список пуст.")
-# Вкладка 4: Карточка (Исправленные отступы и сохранение)
+# Вкладка 4: Карточка (с контактными данными)
 with tab_details:
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
     
     if not cl_list.empty:
-        sel_c = st.selectbox("Клиент", cl_list['name'], key="det_sel")
+        sel_c = st.selectbox("Выберите клиента", cl_list['name'], key="det_sel")
         c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
+        
+        # Получаем расширенные данные клиента
+        with engine.connect() as conn:
+            c_info = conn.execute(text("SELECT phone, contract_no, comment FROM clients WHERE id = :id"), {"id":c_id}).fetchone()
+        
+        # Отображение инфо-панели
+        i_col1, i_col2, i_col3 = st.columns(3)
+        with i_col1:
+            st.caption("📞 Телефон")
+            st.write(c_info[0] if c_info[0] else "—")
+        with i_col2:
+            st.caption("📄 Договор")
+            st.write(c_info[1] if c_info[1] else "—")
+        with i_col3:
+            st.caption("📝 Заметка")
+            st.write(c_info[2] if c_info[2] else "—")
+        
+        st.divider()
+        
+        # Далее идут твои табы t_p, t_e (Оплаты и Затраты) без изменений...
         
         t_p, t_e = st.tabs(["💵 Оплаты", "💸 Затраты"])
         
