@@ -236,7 +236,7 @@ with tab_details:
 
         with t3:
             with engine.connect() as conn:
-                l_df = pd.read_sql(text("SELECT timestamp as 'Время', action as 'Действие', details as 'Детали' FROM logs WHERE client_id = :id ORDER BY timestamp DESC"), conn, params={"id":c_id})
+               l_df = pd.read_sql(text('SELECT timestamp as "Время", action as "Действие", details as "Детали" FROM logs WHERE client_id = :id ORDER BY timestamp DESC'), conn, params={"id":c_id})
             st.dataframe(l_df, use_container_width=True) if not l_df.empty else st.info("Нет истории")
 # Вкладка 5: Новая сделка (с доп. полями)
 with tab_add:
