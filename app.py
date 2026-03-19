@@ -102,13 +102,46 @@ with tab_flow:
         chart_data = pd.merge(rev_m, exp_m, on=['month', 'm_num'], how='outer').fillna(0).sort_values('m_num')
         st.plotly_chart(px.bar(chart_data, x='month', y=['rev', 'exp'], barmode='group', color_discrete_map={'rev':'#28a745','exp':'#dc3545'}), use_container_width=True)
 
-# Вкладка 3: Реестр
+# Вкладка 3: Реестр (с подсветкой просрочек)
 with tab_reestr:
     with engine.connect() as conn:
-        res_df = pd.read_sql(text("SELECT c.name as \"Клиент\", c.total_amount as \"Выручка\", COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0) as \"Затраты\" FROM clients c ORDER BY c.name"), conn)
+        # Получаем данные: клиент, общая сумма, затраты и наличие просроченных платежей
+        query = text("""
+            SELECT 
+                c.name as "Клиент", 
+                c.total_amount as "Выручка", 
+                COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0) as "Затраты",
+                EXISTS (
+                    SELECT 1 FROM schedule 
+                    WHERE client_id = c.id AND date < CURRENT_DATE AND status = 'Ожидается'
+                ) as "Есть_просрочка"
+            FROM clients c 
+            ORDER BY "Есть_просрочка" DESC, c.name ASC
+        """)
+        res_df = pd.read_sql(query, conn)
+    
     res_df['Прибыль'] = res_df['Выручка'] - res_df['Затраты']
-    st.dataframe(res_df, column_config={"Выручка":st.column_config.NumberColumn(format="%d ₽"), "Затраты":st.column_config.NumberColumn(format="%d ₽"), "Прибыль":st.column_config.NumberColumn(format="%d ₽")}, use_container_width=True)
+    
+    # Функция для окрашивания строк
+    def highlight_debt(row):
+        return ['background-color: #ffcccc' if row['Есть_просрочка'] else '' for _ in row]
 
+    # Отображение с применением стиля
+    st.subheader("Список клиентов и финансовое состояние")
+    st.dataframe(
+        res_df.style.apply(highlight_debt, axis=1),
+        column_config={
+            "Выручка": st.column_config.NumberColumn(format="%d ₽"),
+            "Затраты": st.column_config.NumberColumn(format="%d ₽"),
+            "Прибыль": st.column_config.NumberColumn(format="%d ₽"),
+            "Есть_просрочка": None  # Скрываем служебную колонку
+        },
+        use_container_width=True,
+        height=400
+    )
+    
+    if res_df['Есть_просрочка'].any():
+        st.warning("⚠️ Красным выделены клиенты, у которых есть неоплаченные счета с прошедшей датой.")
 # Вкладка 4: Карточка (Исправленные отступы и сохранение)
 with tab_details:
     with engine.connect() as conn:
