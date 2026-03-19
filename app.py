@@ -184,17 +184,14 @@ with tab_details:
         sel_c = st.selectbox("👤 Выберите клиента", cl_list['name'], key="det_sel")
         c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
         
-        # 1. Получение данных клиента
         with engine.connect() as conn:
             c_info = conn.execute(text("SELECT name, phone, contract_no, comment, total_amount FROM clients WHERE id = :id"), {"id":c_id}).fetchone()
         
-        # 2. Инфо-панель
         c1, c2, c3 = st.columns(3)
         c1.metric("📞 Телефон", c_info[1] if c_info[1] else "—")
         c2.metric("📄 Договор", f"№{c_info[2]}" if c_info[2] else "—")
         c3.metric("💰 Сумма", f"{c_info[4]:,.0f} ₽")
 
-        # 3. Редактирование профиля
         with st.expander("📝 Редактировать профиль"):
             with st.form(f"f_edit_{c_id}"):
                 un = st.text_input("ФИО", value=c_info[0])
@@ -208,7 +205,6 @@ with tab_details:
                     st.success("Данные обновлены")
                     st.rerun()
 
-        # 4. Массовая оплата
         with engine.connect() as conn:
             p_cnt = conn.execute(text("SELECT COUNT(*) FROM schedule WHERE client_id = :id AND status = 'Ожидается'"), {"id":c_id}).scalar()
         
@@ -217,17 +213,54 @@ with tab_details:
                 with engine.begin() as conn:
                     conn.execute(text("UPDATE schedule SET status = 'ОПЛАЧЕНО' WHERE client_id = :id AND status = 'Ожидается'"), {"id":c_id})
                     conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Оплата', 'Массовое закрытие')"), {"id":c_id})
-                st.success("Все оплаты подтверждены")
                 st.rerun()
 
         st.divider()
-
-        # 5. Таблицы данных
         t1, t2, t3 = st.tabs(["💵 Оплаты", "💸 Расходы", "📜 История"])
         
         with t1:
             with engine.connect() as conn:
-                df_p =
+                df_p = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
+            ed_p = st.data_editor(df_p, num_rows="dynamic", use_container_width=True, key=f"p_ed_{c_id}", column_config={"id": None})
+            if st.button("Сохранить график", key=f"btn_p_{c_id}"):
+                with engine.begin() as conn:
+                    for _, r in ed_p.iterrows():
+                        if pd.notnull(r.get('id')):
+                            conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:rid"), {"d":r['date'], "a":r['amount'], "s":r['status'], "rid":int(r['id'])})
+                    conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'График', 'Правка таблицы')"), {"id":c_id})
+                st.rerun()
+
+        with t2:
+            with engine.connect() as conn:
+                df_e = pd.read_sql(text("SELECT id, description, amount, status, date FROM expenses WHERE client_id = :id"), conn, params={"id":c_id})
+            ed_e = st.data_editor(df_e, num_rows="dynamic", use_container_width=True, key=f"e_ed_{c_id}", column_config={"id": None})
+            if st.button("Сохранить расходы", key=f"btn_e_{c_id}"):
+                with engine.begin() as conn:
+                    for _, r in ed_e.iterrows():
+                        if pd.notnull(r.get('id')):
+                            conn.execute(text("UPDATE expenses SET description=:ds, amount=:am, status=:st, date=:dt WHERE id=:rid"), {"ds":r['description'], "am":r['amount'], "st":r['status'], "dt":r['date'], "rid":int(r['id'])})
+                    conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Расходы', 'Правка таблицы')"), {"id":c_id})
+                st.rerun()
+
+        with t3:
+            with engine.connect() as conn:
+                l_df = pd.read_sql(text('SELECT timestamp as "Время", action as "Действие", details as "Детали" FROM logs WHERE client_id = :id ORDER BY timestamp DESC'), conn, params={"id":c_id})
+            if not l_df.empty:
+                st.dataframe(l_df, use_container_width=True)
+            else:
+                st.info("История пуста")
+
+        with st.expander("⚠️ Удаление клиента"):
+            confirm = st.checkbox(f"Удалить все данные {sel_c}")
+            if st.button("🗑️ Удалить безвозвратно", type="primary", disabled=not confirm):
+                with engine.begin() as conn:
+                    conn.execute(text("DELETE FROM schedule WHERE client_id = :id"), {"id": c_id})
+                    conn.execute(text("DELETE FROM expenses WHERE client_id = :id"), {"id": c_id})
+                    conn.execute(text("DELETE FROM logs WHERE client_id = :id"), {"id": c_id})
+                    conn.execute(text("DELETE FROM clients WHERE id = :id"), {"id": c_id})
+                st.rerun()
+    else:
+        st.info("Нет активных клиентов.")
 # Вкладка 5: Новая сделка (с доп. полями)
 with tab_add:
     with st.form("new_deal"):
