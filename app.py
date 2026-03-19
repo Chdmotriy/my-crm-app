@@ -129,57 +129,58 @@ with tab_flow:
     
     if forecast_rev < forecast_exp:
         st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые приходы в ближайшие 30 дней!")
-# Вкладка 3: Реестр (Актив/Архив + Итоги по дебиторке)
+# Вкладка 3: Реестр (Исправленный синтаксис)
 with tab_reestr:
     with engine.connect() as conn:
         query = text("""
             SELECT 
-                c.id,
-                c.name as "Клиент", 
-                c.total_amount as "Сумма договора", 
+                c.id, c.name as "Клиент", c.total_amount as "Сумма договора", 
                 COALESCE((SELECT SUM(amount) FROM schedule WHERE client_id = c.id AND status = 'ОПЛАЧЕНО'), 0) as "Получено",
                 COALESCE((SELECT SUM(amount) FROM expenses WHERE client_id = c.id), 0) as "Затраты",
-                EXISTS (
-                    SELECT 1 FROM schedule 
-                    WHERE client_id = c.id AND date < CURRENT_DATE AND status = 'Ожидается'
-                ) as "Есть_просрочка"
-            FROM clients c 
-            ORDER BY "Есть_просрочка" DESC, c.name ASC
+                EXISTS (SELECT 1 FROM schedule WHERE client_id = c.id AND date < CURRENT_DATE AND status = 'Ожидается') as "Есть_просрочка"
+            FROM clients c ORDER BY "Есть_просрочка" DESC, c.name ASC
         """)
         df = pd.read_sql(query, conn)
     
-    # Расчеты
     df["Остаток долга"] = df["Сумма договора"] - df["Получено"]
     df["Прибыль"] = df["Сумма договора"] - df["Затраты"]
 
-    # Метрики над таблицей (только по активным долгам)
+    # Метрики
     total_receivable = df[df["Остаток долга"] > 0]["Остаток долга"].sum()
-    overdue_count = df[df["Есть_просroчка"] == True]["Клиент"].count()
+    overdue_count = int(df["Есть_просрочка"].sum())
 
-    m_col1, m_col2 = st.columns(2)
-    m_col1.metric("Общая дебиторка (ожидается)", f"{total_receivable:,.0f} ₽")
-    m_col2.metric("Клиентов с просрочкой", f"{overdue_count} чел.", delta=f"{overdue_count}" if overdue_count > 0 else None, delta_color="inverse")
+    m1, m2 = st.columns(2)
+    m1.metric("Общая дебиторка", f"{total_receivable:,.0f} ₽")
+    m2.metric("Клиентов с просрочкой", f"{overdue_count} чел.", delta=f"{overdue_count}" if overdue_count > 0 else None, delta_color="inverse")
 
     st.divider()
+    view_mode = st.radio("Фильтр:", ["Активные (есть долг)", "Архив (оплачено)"], horizontal=True, key="r_v_mode")
 
-    # Выбор режима отображения
-    view_mode = st.radio("Показать клиентов:", ["Активные (есть долг)", "Архив (оплачено 100%)"], horizontal=True, key="reestr_mode")
-
-    # Логика фильтрации
+    # Фильтрация
     if view_mode == "Активные (есть долг)":
         display_df = df[df["Остаток долга"] > 0].copy()
     else:
         display_df = df[df["Остаток долга"] <= 0].copy()
 
-    # Стилизация просрочки
-    def highlight_debt(row):
-        if view_mode == "Активные (есть долг)" and row['Есть_просрочка']:
-            return ['background-color: #ffcccc'] * len(row)
-        return [''] * len(row)
+    # Стилизация (в одну строку во избежание разрывов)
+    def style_row(row):
+        return ['background-color: #ffcccc' if (view_mode == "Активные (есть долг)" and row['Есть_просрочка']) else '' for _ in row]
 
     if not display_df.empty:
         st.dataframe(
-            display_df.style.apply(highlight_
+            display_df.style.apply(style_row, axis=1),
+            column_config={
+                "id": None, "Есть_просрочка": None,
+                "Сумма договора": st.column_config.NumberColumn(format="%d ₽"),
+                "Получено": st.column_config.NumberColumn(format="%d ₽"),
+                "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
+                "Затраты": st.column_config.NumberColumn(format="%d ₽"),
+                "Прибыль": st.column_config.NumberColumn(format="%d ₽")
+            },
+            use_container_width=True, height=500
+        )
+    else:
+        st.info("Список пуст.")
 # Вкладка 4: Карточка (Исправленные отступы и сохранение)
 with tab_details:
     with engine.connect() as conn:
