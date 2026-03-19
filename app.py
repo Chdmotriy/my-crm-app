@@ -52,7 +52,6 @@ tab_cal, tab_flow, tab_reestr, tab_details, tab_add = st.tabs([
 ])
 
 # Вкладка 1: Интерактивный календарь
-# Вкладка 1: Интерактивный календарь
 with tab_cal:
     with engine.connect() as conn:
         # Тянем только неоплаченные, чтобы не захламлять календарь выполненными задачами
@@ -111,7 +110,6 @@ with tab_reestr:
     st.dataframe(res_df, column_config={"Выручка":st.column_config.NumberColumn(format="%d ₽"), "Затраты":st.column_config.NumberColumn(format="%d ₽"), "Прибыль":st.column_config.NumberColumn(format="%d ₽")}, use_container_width=True)
 
 # Вкладка 4: Карточка (С возможностью редактирования)
-# Вкладка 4: Карточка (Безопасное редактирование)
 with tab_details:
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
@@ -123,27 +121,42 @@ with tab_details:
         t_p, t_e = st.tabs(["💵 Оплаты", "💸 Затраты"])
         
         with t_p:
-            with engine.connect() as conn:
-                df_p = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
-            
-            # Редактор данных
-            ed_p = st.data_editor(df_p, num_rows="dynamic", column_config={"id": None}, use_container_width=True, key=f"p_ed_{c_id}")
-            
-            if st.button("Сохранить изменения в оплатах", key=f"btn_p_{c_id}"):
-                with engine.begin() as conn:  # engine.begin() автоматически делает commit
-                    for _, r in ed_p.iterrows():
-                        if pd.notnull(r.get('id')): # Если ID есть — обновляем
-                            conn.execute(text("""
-                                UPDATE schedule SET date=:d, amount=:a, status=:s 
-                                WHERE id=:rid AND client_id=:cid
-                            """), {"d":r['date'], "a":r['amount'], "s":r['status'], "rid":int(r['id']), "cid":c_id})
-                        else: # Если ID нет — вставляем новую строку
-                            conn.execute(text("""
-                                INSERT INTO schedule (client_id, date, amount, status) 
-                                VALUES (:cid, :d, :a, :s)
-                            """), {"cid":c_id, "d":r['date'], "a":r['amount'], "s":r['status']})
-                st.success("Данные оплат обновлены")
-                st.rerun()
+    with engine.connect() as conn:
+        df_p = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id":c_id})
+    
+    # Настройка колонок: добавляем выбор из списка для статуса
+    ed_p = st.data_editor(
+        df_p, 
+        num_rows="dynamic", 
+        column_config={
+            "id": None, 
+            "status": st.column_config.SelectboxColumn(
+                "Статус",
+                options=["Ожидается", "ОПЛАЧЕНО"],
+                required=True
+            )
+        }, 
+        use_container_width=True, 
+        key=f"p_ed_{c_id}"
+    )
+    
+    if st.button("Сохранить изменения в оплатах", key=f"btn_p_{c_id}"):
+        with engine.begin() as conn:
+            for _, r in ed_p.iterrows():
+                # Проверяем наличие ID (существующая запись)
+                if pd.notnull(r.get('id')):
+                    conn.execute(text("""
+                        UPDATE schedule SET date=:d, amount=:a, status=:s 
+                        WHERE id=:rid AND client_id=:cid
+                    """), {"d":r['date'], "a":r['amount'], "s":r['status'], "rid":int(r['id']), "cid":c_id})
+                # Если ID нет и заполнены данные (новая запись)
+                elif pd.notnull(r.get('date')) and pd.notnull(r.get('amount')):
+                    conn.execute(text("""
+                        INSERT INTO schedule (client_id, date, amount, status) 
+                        VALUES (:cid, :d, :a, :s)
+                    """), {"cid":c_id, "d":r['date'], "a":r['amount'], "s":r.get('status', 'Ожидается')})
+        st.success("Данные оплат сохранены!")
+        st.rerun()
 
         with t_e:
             with engine.connect() as conn:
