@@ -5,6 +5,13 @@ from datetime import datetime, timedelta
 from streamlit_calendar import calendar as st_calendar
 import sqlalchemy
 from sqlalchemy import text
+import pytesseract
+from PIL import Image
+import io
+import re
+
+# Для облака Streamlit путь указывать НЕ НУЖНО, 
+# система найдет его сама после добавления packages.txt
 def add_log(client_id, action, details=""):
     with engine.begin() as conn:
         conn.execute(text("""
