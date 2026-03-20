@@ -300,6 +300,37 @@ with tab_details:
         st.info("Нет активных клиентов.")
 # Вкладка 5: Новая сделка (с доп. полями)
 with tab_add:
+    st.subheader("🤖 Автоматическое распознавание документов")
+    
+    # Хранилище временных данных, чтобы поля не сбрасывались
+    if 'ocr_inn' not in st.session_state: st.session_state.ocr_inn = ""
+    if 'ocr_snils' not in st.session_state: st.session_state.ocr_snils = ""
+    if 'ocr_pass' not in st.session_state: st.session_state.ocr_pass = ""
+
+    uploaded_file = st.file_uploader("Загрузить скан или фото (Паспорт, ИНН, СНИЛС)", type=['png', 'jpg', 'jpeg'])
+    if uploaded_file is not None:
+        if st.button("✨ Распознать текст", type="primary"):
+            with st.spinner('Читаем документ...'):
+                image = Image.open(uploaded_file)
+                # Распознаем текст на русском и английском
+                text = pytesseract.image_to_string(image, lang='rus+eng')
+                
+                # Ищем СНИЛС (формат 123-456-789 12 или слитно)
+                snils_match = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text)
+                if snils_match: st.session_state.ocr_snils = snils_match.group(0)
+                
+                # Ищем ИНН (обычно 10 или 12 цифр)
+                inn_match = re.search(r'\b\d{10,12}\b', text)
+                if inn_match: st.session_state.ocr_inn = inn_match.group(0)
+                
+                # Ищем серию и номер паспорта (4 цифры, пробел, 6 цифр)
+                pass_match = re.search(r'\b\d{2}\s?\d{2}\s?\d{6}\b', text)
+                if pass_match: st.session_state.ocr_pass = pass_match.group(0)
+                
+            st.success("Документ обработан! Проверьте заполненные поля ниже.")
+
+    st.divider()
+
     with st.form("new_deal"):
         col1, col2 = st.columns(2)
         with col1:
@@ -312,10 +343,11 @@ with tab_add:
         st.markdown("##### 🪪 Документы")
         doc1, doc2 = st.columns(2)
         with doc1:
-            passp = st.text_input("Паспортные данные")
-            snils_val = st.text_input("СНИЛС")
+            # Сюда подставляются данные из нейросети, если они нашлись
+            passp = st.text_input("Паспортные данные", value=st.session_state.ocr_pass)
+            snils_val = st.text_input("СНИЛС", value=st.session_state.ocr_snils)
         with doc2:
-            inn_val = st.text_input("ИНН")
+            inn_val = st.text_input("ИНН", value=st.session_state.ocr_inn)
             addr = st.text_input("Адрес регистрации")
 
         st.markdown("##### ⚙️ Условия")
@@ -327,7 +359,6 @@ with tab_add:
         if st.form_submit_button("Создать сделку"):
             if n:
                 with engine.begin() as conn:
-                    # Обновленный запрос: теперь сохраняем и документы
                     cid = conn.execute(text("""
                         INSERT INTO clients (name, total_amount, months, start_date, phone, contract_no, comment, passport, snils, inn, address) 
                         VALUES (:n, :t, :m, :d, :p, :c_no, :comm, :passp, :snils, :inn, :addr) RETURNING id
@@ -339,5 +370,10 @@ with tab_add:
                         p_date = d + timedelta(days=i*30)
                         conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:cid, :dt, :am, 'Ожидается')"),
                                      {"cid":cid, "dt":p_date, "am":amount_per_step})
+                
+                # Очищаем временную память после сохранения
+                st.session_state.ocr_inn = ""
+                st.session_state.ocr_snils = ""
+                st.session_state.ocr_pass = ""
                 st.success(f"Клиент {n} успешно добавлен!")
                 st.rerun()
