@@ -197,24 +197,42 @@ with tab_details:
         c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
         
         with engine.connect() as conn:
-            c_info = conn.execute(text("SELECT name, phone, contract_no, comment, total_amount FROM clients WHERE id = :id"), {"id":c_id}).fetchone()
+            c_info = conn.execute(text("SELECT name, phone, contract_no, comment, total_amount, passport, snils, inn, address FROM clients WHERE id = :id"), {"id":c_id}).fetchone()
         
         c1, c2, c3 = st.columns(3)
         c1.metric("📞 Телефон", c_info[1] if c_info[1] else "—")
         c2.metric("📄 Договор", f"№{c_info[2]}" if c_info[2] else "—")
         c3.metric("💰 Сумма", f"{c_info[4]:,.0f} ₽")
 
-        with st.expander("📝 Редактировать профиль"):
+        with st.expander("📝 Редактировать профиль (и документы)"):
             with st.form(f"f_edit_{c_id}"):
-                un = st.text_input("ФИО", value=c_info[0])
-                up = st.text_input("Телефон", value=c_info[1])
-                uc = st.text_input("Номер договора", value=c_info[2])
-                ucm = st.text_area("Заметка", value=c_info[3])
+                un = st.text_input("ФИО", value=c_info[0] if c_info[0] else "")
+                up = st.text_input("Телефон", value=c_info[1] if c_info[1] else "")
+                uc = st.text_input("Номер договора", value=c_info[2] if c_info[2] else "")
+                
+                # Новые поля
+                st.markdown("---")
+                upass = st.text_input("Паспорт", value=c_info[5] if c_info[5] else "")
+                usnils = st.text_input("СНИЛС", value=c_info[6] if c_info[6] else "")
+                uinn = st.text_input("ИНН", value=c_info[7] if c_info[7] else "")
+                uaddr = st.text_input("Адрес", value=c_info[8] if c_info[8] else "")
+                st.markdown("---")
+                
+                ucm = st.text_area("Заметка", value=c_info[3] if c_info[3] else "")
+                
                 if st.form_submit_button("Сохранить изменения"):
                     with engine.begin() as conn:
-                        conn.execute(text("UPDATE clients SET name=:n, phone=:p, contract_no=:c, comment=:cm WHERE id=:id"), {"n":un, "p":up, "c":uc, "cm":ucm, "id":c_id})
-                        conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Правка', 'Изменен профиль')"), {"id":c_id})
-                    st.success("Данные обновлены")
+                        conn.execute(text("""
+                            UPDATE clients 
+                            SET name=:n, phone=:p, contract_no=:c, comment=:cm, passport=:pass, snils=:snils, inn=:inn, address=:addr 
+                            WHERE id=:id
+                        """), {
+                            "n":un, "p":up, "c":uc, "cm":ucm, 
+                            "pass":upass, "snils":usnils, "inn":uinn, "addr":uaddr, 
+                            "id":c_id
+                        })
+                        conn.execute(text("INSERT INTO logs (client_id, action, details) VALUES (:id, 'Правка', 'Изменен профиль и документы')"), {"id":c_id})
+                    st.success("Данные успешно обновлены!")
                     st.rerun()
 
         with engine.connect() as conn:
@@ -284,6 +302,16 @@ with tab_add:
             t = st.number_input("Сумма договора", value=100000.0)
             c_no = st.text_input("Номер договора")
             
+        st.markdown("##### 🪪 Документы")
+        doc1, doc2 = st.columns(2)
+        with doc1:
+            passp = st.text_input("Паспортные данные")
+            snils_val = st.text_input("СНИЛС")
+        with doc2:
+            inn_val = st.text_input("ИНН")
+            addr = st.text_input("Адрес регистрации")
+
+        st.markdown("##### ⚙️ Условия")
         tp = st.radio("Тип оплаты", ["Рассрочка", "Сразу"], horizontal=True)
         m = st.number_input("Кол-во платежей (месяцев)", min_value=1, value=1)
         d = st.date_input("Дата первого платежа", datetime.now())
@@ -292,10 +320,11 @@ with tab_add:
         if st.form_submit_button("Создать сделку"):
             if n:
                 with engine.begin() as conn:
+                    # Обновленный запрос: теперь сохраняем и документы
                     cid = conn.execute(text("""
-                        INSERT INTO clients (name, total_amount, months, start_date, phone, contract_no, comment) 
-                        VALUES (:n, :t, :m, :d, :p, :c_no, :comm) RETURNING id
-                    """), {"n":n, "t":t, "m":int(m), "d":d, "p":p, "c_no":c_no, "comm":comm}).scalar()
+                        INSERT INTO clients (name, total_amount, months, start_date, phone, contract_no, comment, passport, snils, inn, address) 
+                        VALUES (:n, :t, :m, :d, :p, :c_no, :comm, :passp, :snils, :inn, :addr) RETURNING id
+                    """), {"n":n, "t":t, "m":int(m), "d":d, "p":p, "c_no":c_no, "comm":comm, "passp":passp, "snils":snils_val, "inn":inn_val, "addr":addr}).scalar()
                     
                     steps = 1 if tp == "Сразу" else int(m)
                     amount_per_step = round(t / steps, 2)
