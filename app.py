@@ -19,43 +19,130 @@ def add_log(client_id, action, details=""):
             VALUES (:cid, :act, :det)
         """), {"cid": client_id, "act": action, "det": details})
 def generate_contract_pdf(client_info, payments):
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
     from io import BytesIO
+    from datetime import datetime
 
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer)
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=25,
+        rightMargin=25,
+        topMargin=25,
+        bottomMargin=25
+    )
 
     styles = getSampleStyleSheet()
     elements = []
 
-    # Заголовок
-    elements.append(Paragraph("ДОГОВОР", styles['Title']))
+    # --- ЗАГОЛОВОК ---
+    elements.append(Paragraph("<b>ДОГОВОР ОКАЗАНИЯ УСЛУГ</b>", styles['Title']))
     elements.append(Spacer(1, 12))
 
-    # Данные клиента
-    elements.append(Paragraph(f"ФИО: {client_info[0]}", styles['Normal']))
-    elements.append(Paragraph(f"Паспорт: {client_info[5]}", styles['Normal']))
-    elements.append(Paragraph(f"ИНН: {client_info[7]}", styles['Normal']))
-    elements.append(Paragraph(f"СНИЛС: {client_info[6]}", styles['Normal']))
-    elements.append(Paragraph(f"Сумма договора: {client_info[4]} ₽", styles['Normal']))
+    today = datetime.now().strftime("%d.%m.%Y")
+    contract_no = client_info[2] if client_info[2] else "—"
+
+    elements.append(Paragraph(f"№ {contract_no} от {today}", styles['Normal']))
     elements.append(Spacer(1, 12))
 
-    # Таблица платежей
-    data = [["Дата", "Сумма"]]
+    # --- СТОРОНЫ ---
+    elements.append(Paragraph("<b>1. Стороны договора</b>", styles['Heading2']))
+    elements.append(Spacer(1, 6))
 
-    for _, row in payments.iterrows():
-        data.append([str(row['date']), f"{row['amount']} ₽"])
+    elements.append(Paragraph(
+        f"Исполнитель: ____________________________", styles['Normal']
+    ))
+    elements.append(Paragraph(
+        f"Заказчик: {client_info[0]}", styles['Normal']
+    ))
+    elements.append(Spacer(1, 12))
 
-    table = Table(data)
-    elements.append(Paragraph("График платежей:", styles['Heading2']))
+    # --- ДАННЫЕ КЛИЕНТА ---
+    elements.append(Paragraph("<b>2. Данные заказчика</b>", styles['Heading2']))
+    elements.append(Spacer(1, 6))
+
+    elements.append(Paragraph(f"Паспорт: {client_info[5] or '—'}", styles['Normal']))
+    elements.append(Paragraph(f"ИНН: {client_info[7] or '—'}", styles['Normal']))
+    elements.append(Paragraph(f"СНИЛС: {client_info[6] or '—'}", styles['Normal']))
+    elements.append(Paragraph(f"Адрес: {client_info[8] or '—'}", styles['Normal']))
+
+    elements.append(Spacer(1, 12))
+
+    # --- ПРЕДМЕТ ДОГОВОРА ---
+    elements.append(Paragraph("<b>3. Предмет договора</b>", styles['Heading2']))
+    elements.append(Spacer(1, 6))
+
+    elements.append(Paragraph(
+        f"Исполнитель обязуется оказать услуги, а Заказчик обязуется оплатить их стоимость в размере {client_info[4]:,.0f} ₽.",
+        styles['Normal']
+    ))
+
+    elements.append(Spacer(1, 12))
+
+    # --- ГРАФИК ПЛАТЕЖЕЙ ---
+    elements.append(Paragraph("<b>4. График платежей</b>", styles['Heading2']))
+    elements.append(Spacer(1, 6))
+
+    data = [["№", "Дата", "Сумма"]]
+
+    for i, row in enumerate(payments.iterrows(), start=1):
+        _, r = row
+        data.append([
+            str(i),
+            str(r['date']),
+            f"{r['amount']:,.0f} ₽"
+        ])
+
+    table = Table(data, colWidths=[40, 100, 100])
+
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+
+        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
+    ]))
+
     elements.append(table)
+
+    elements.append(Spacer(1, 20))
+
+    # --- УСЛОВИЯ ---
+    elements.append(Paragraph("<b>5. Условия</b>", styles['Heading2']))
+    elements.append(Spacer(1, 6))
+
+    elements.append(Paragraph(
+        "Оплата производится согласно графику. В случае просрочки возможны штрафные санкции.",
+        styles['Normal']
+    ))
+
+    elements.append(Spacer(1, 20))
+
+    # --- ПОДПИСИ ---
+    elements.append(Paragraph("<b>6. Подписи сторон</b>", styles['Heading2']))
+    elements.append(Spacer(1, 20))
+
+    sign_table = Table([
+        ["Исполнитель", "Заказчик"],
+        ["______________", "______________"],
+        ["Подпись", "Подпись"]
+    ], colWidths=[200, 200])
+
+    elements.append(sign_table)
 
     doc.build(elements)
 
     pdf = buffer.getvalue()
     buffer.close()
+
     return pdf
 # --- 1. НАСТРОЙКИ ---
 st.set_page_config(page_title="CRM Interactive Pro", layout="wide")
