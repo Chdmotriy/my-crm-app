@@ -45,6 +45,16 @@ def draw_page(canvas, doc):
     canvas.rect(30, 30, 535, 780)
 
     canvas.restoreState()
+        # --- ПОДПИСИ ВНИЗУ ---
+    canvas.setFont("DejaVu", 9)
+    
+    # линии
+    canvas.line(60, 50, 250, 50)
+    canvas.line(330, 50, 520, 50)
+    
+    # подписи
+    canvas.drawString(120, 35, "Исполнитель")
+    canvas.drawString(400, 35, "Заказчик")
 def generate_contract_pdf(client_info, payments):
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
