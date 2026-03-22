@@ -126,7 +126,7 @@ def generate_contract_pdf(client_info, payments):
     if tpl and tpl[0].strip():
         contract_text = render_template(tpl[0], client_info)
         for block in contract_text.split("\n\n"):
-    elements.append(Paragraph(block.replace("\n", "<br/>"), normal))
+        elements.append(Paragraph(block.replace("\n", "<br/>"), normal))
     else:
         elements.append(Paragraph("Шаблон договора не заполнен", normal))
 
