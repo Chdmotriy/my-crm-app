@@ -18,6 +18,45 @@ def add_log(client_id, action, details=""):
             INSERT INTO logs (client_id, action, details) 
             VALUES (:cid, :act, :det)
         """), {"cid": client_id, "act": action, "det": details})
+def generate_contract_pdf(client_info, payments):
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib import colors
+    from io import BytesIO
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer)
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Заголовок
+    elements.append(Paragraph("ДОГОВОР", styles['Title']))
+    elements.append(Spacer(1, 12))
+
+    # Данные клиента
+    elements.append(Paragraph(f"ФИО: {client_info[0]}", styles['Normal']))
+    elements.append(Paragraph(f"Паспорт: {client_info[5]}", styles['Normal']))
+    elements.append(Paragraph(f"ИНН: {client_info[7]}", styles['Normal']))
+    elements.append(Paragraph(f"СНИЛС: {client_info[6]}", styles['Normal']))
+    elements.append(Paragraph(f"Сумма договора: {client_info[4]} ₽", styles['Normal']))
+    elements.append(Spacer(1, 12))
+
+    # Таблица платежей
+    data = [["Дата", "Сумма"]]
+
+    for _, row in payments.iterrows():
+        data.append([str(row['date']), f"{row['amount']} ₽"])
+
+    table = Table(data)
+    elements.append(Paragraph("График платежей:", styles['Heading2']))
+    elements.append(table)
+
+    doc.build(elements)
+
+    pdf = buffer.getvalue()
+    buffer.close()
+    return pdf
 # --- 1. НАСТРОЙКИ ---
 st.set_page_config(page_title="CRM Interactive Pro", layout="wide")
 ADMIN_PASSWORD = "D17v01ch89!" # ЗАМЕНИТЕ НА СВОЙ
@@ -369,35 +408,22 @@ with tab_details:
         # --- ДОГОВОР ---
         st.subheader("📄 Договор")
 
-        if st.button("Сгенерировать договор"):
-            with engine.connect() as conn:
-                payments = pd.read_sql(
-                    text("SELECT date, amount FROM schedule WHERE client_id = :id ORDER BY date"),
-                    conn,
-                    params={"id": c_id}
-                )
+if st.button("Сгенерировать PDF договор"):
+    with engine.connect() as conn:
+        payments = pd.read_sql(
+            text("SELECT date, amount FROM schedule WHERE client_id = :id ORDER BY date"),
+            conn,
+            params={"id": c_id}
+        )
 
-            contract_text = f"""
-ДОГОВОР
+    pdf_file = generate_contract_pdf(c_info, payments)
 
-ФИО: {c_info[0]}
-Паспорт: {c_info[5]}
-ИНН: {c_info[7]}
-СНИЛС: {c_info[6]}
-
-Сумма: {c_info[4]}
-
-График платежей:
-"""
-
-            for _, row in payments.iterrows():
-                contract_text += f"\n{row['date']} — {row['amount']} ₽"
-
-            st.download_button(
-                "📥 Скачать договор",
-                contract_text,
-                filename=f"contract_{c_info[0]}.txt"
-            )
+    st.download_button(
+        label="📥 Скачать PDF",
+        data=pdf_file,
+        file_name=f"contract_{c_info[0]}.pdf",
+        mime="application/pdf"
+    )
 
     else:
         st.info("Нет клиентов")
