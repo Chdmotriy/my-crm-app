@@ -51,17 +51,36 @@ def generate_contract_pdf(client_info, payments):
 
     elements.append(Spacer(1, 10))
 
-    # --- НАЗВАНИЕ КОМПАНИИ ---
-    elements.append(Paragraph(f"<b>{COMPANY_NAME}</b>", styles['Title']))
-    elements.append(Spacer(1, 10))
+    # --- ШАПКА: ЛОГОТИП + НОМЕР ---
+from reportlab.platypus import Image, Table, TableStyle
 
-    # --- НОМЕР ДОГОВОРА ---
-    today = datetime.now().strftime("%d.%m.%Y")
-    contract_no = client_info[2]
-    if not contract_no:
-        contract_no = f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
-    elements.append(Paragraph(f"ДОГОВОР № {contract_no}", styles['Heading2']))
-    elements.append(Paragraph(f"от {today}", styles['Normal']))
+today = datetime.now().strftime("%d.%m.%Y")
+contract_no = client_info[2]
+if not contract_no:
+    contract_no = f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
+
+# логотип
+    try:
+        logo = Image("logo.png", width=80, height=40)
+    except:
+        logo = Paragraph("", styles['Normal'])
+    
+    # правая часть (номер и дата)
+    header_text = Paragraph(
+        f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}",
+        styles['Normal']
+    )
+    
+    header_table = Table([
+        [logo, header_text]
+    ], colWidths=[100, 300])
+    
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    
+    elements.append(header_table)
     elements.append(Spacer(1, 15))
 
     # --- ДАННЫЕ КЛИЕНТА ---
