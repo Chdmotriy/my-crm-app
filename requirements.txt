@@ -9,3 +9,4 @@ streamlit-calendar
 pytesseract
 Pillow
 reportlab
+streamlit-quill
