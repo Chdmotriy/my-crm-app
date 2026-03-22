@@ -329,33 +329,33 @@ with tab_details:
             st.warning("⚠️ Таблица для файлов не создана")
             files_df = pd.DataFrame()
 
-        if not files_df.empty and 'file_type' in files_df.columns:
-
-    for doc in ["passport", "snils", "inn"]:
-        st.markdown(f"#### {doc.upper()}")
-
-        doc_files = files_df[files_df['file_type'] == doc]
-
-        if not doc_files.empty:
-            for _, f in doc_files.iterrows():
-                col1, col2 = st.columns([4, 1])
-
-                with col1:
-                    st.write(f"📄 {f['file_name']}")
-
-                with col2:
-                    if st.button("🗑️", key=f"del_{f['id']}"):
-                        with engine.begin() as conn:
-                            conn.execute(
-                                text("DELETE FROM client_files WHERE id=:id"),
-                                {"id": int(f['id'])}
-                            )
-                        st.rerun()
-        else:
-            st.caption("Нет файлов")
-
-else:
-    st.info("📂 Документы пока не загружены или таблица не готова")
+            if not files_df.empty and 'file_type' in files_df.columns:
+    
+        for doc in ["passport", "snils", "inn"]:
+            st.markdown(f"#### {doc.upper()}")
+    
+            doc_files = files_df[files_df['file_type'] == doc]
+    
+            if not doc_files.empty:
+                for _, f in doc_files.iterrows():
+                    col1, col2 = st.columns([4, 1])
+    
+                    with col1:
+                        st.write(f"📄 {f['file_name']}")
+    
+                    with col2:
+                        if st.button("🗑️", key=f"del_{f['id']}"):
+                            with engine.begin() as conn:
+                                conn.execute(
+                                    text("DELETE FROM client_files WHERE id=:id"),
+                                    {"id": int(f['id'])}
+                                )
+                            st.rerun()
+            else:
+                st.caption("Нет файлов")
+    
+    else:
+        st.info("📂 Документы пока не загружены или таблица не готова")
 
         st.divider()
 
