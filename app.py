@@ -65,7 +65,13 @@ def generate_contract_pdf(client_info, payments):
     styles = getSampleStyleSheet()
 
     # --- СТИЛИ ---
-    normal = ParagraphStyle(name='Normal', fontName='DejaVu', fontSize=10, leading=15)
+    normal = ParagraphStyle(
+    name='Normal',
+    fontName='DejaVu',
+    fontSize=10,
+    leading=16,
+    spaceAfter=10,   # ← отступ между абзацами
+)
     bold = ParagraphStyle(name='Bold', fontName='DejaVu', fontSize=11, leading=15, spaceAfter=8)
     title = ParagraphStyle(name='Title', fontName='DejaVu', fontSize=15, alignment=1, spaceAfter=14)
     right = ParagraphStyle(name='Right', fontName='DejaVu', fontSize=10, alignment=2)
