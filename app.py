@@ -408,22 +408,22 @@ with tab_details:
         # --- ДОГОВОР ---
         st.subheader("📄 Договор")
 
-if st.button("Сгенерировать PDF договор"):
-    with engine.connect() as conn:
-        payments = pd.read_sql(
-            text("SELECT date, amount FROM schedule WHERE client_id = :id ORDER BY date"),
-            conn,
-            params={"id": c_id}
-        )
-
-    pdf_file = generate_contract_pdf(c_info, payments)
-
-    st.download_button(
-        label="📥 Скачать PDF",
-        data=pdf_file,
-        file_name=f"contract_{c_info[0]}.pdf",
-        mime="application/pdf"
-    )
+        if st.button("Сгенерировать PDF договор"):
+            with engine.connect() as conn:
+                payments = pd.read_sql(
+                    text("SELECT date, amount FROM schedule WHERE client_id = :id ORDER BY date"),
+                    conn,
+                    params={"id": c_id}
+                )
+        
+            pdf_file = generate_contract_pdf(c_info, payments)
+        
+            st.download_button(
+                label="📥 Скачать PDF",
+                data=pdf_file,
+                file_name=f"contract_{c_info[0]}.pdf",
+                mime="application/pdf"
+            )
 
     else:
         st.info("Нет клиентов")
