@@ -65,7 +65,7 @@ def generate_contract_pdf(client_info, payments):
 
     # --- ЗАГОЛОВОК ---
     elements.append(Paragraph("ДОГОВОР ОКАЗАНИЯ ЮРИДИЧЕСКИХ УСЛУГ", title))
-    elements.append(Paragraph(f"г. _________, {today}", normal))
+    elements.append(Paragraph(f"{today}", normal))
     elements.append(Spacer(1, 12))
 
     # --- ВСТУПЛЕНИЕ ---
