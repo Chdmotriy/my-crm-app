@@ -353,6 +353,7 @@ with tab_details:
                         st.rerun()
         else:
             st.caption("Нет файлов")
+
 else:
     st.info("📂 Документы пока не загружены или таблица не готова")
 
