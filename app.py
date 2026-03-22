@@ -79,7 +79,7 @@ def generate_contract_pdf(client_info, payments):
         ).fetchone()
 
     if tpl:
-        contract_text = render_template(tpl[0], client_info)
+        contract_text = render_template(tpl[0], client_info).replace("\n", "<br/>")
 
     # --- ДАННЫЕ ---
     today = datetime.now().strftime("%d.%m.%Y")
