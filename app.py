@@ -126,8 +126,12 @@ def generate_contract_pdf(client_info, payments):
 # --- ТЕКСТ ДОГОВОРА ИЗ CRM ---
     if tpl and tpl[0].strip():
         contract_text = render_template(tpl[0], client_info)
-    for block in contract_text.split("\n\n"):
-        elements.append(Paragraph(block.replace("\n", "<br/>"), normal))
+    from bs4 import BeautifulSoup
+    
+    soup = BeautifulSoup(contract_text, "html.parser")
+    
+    for el in soup.find_all(["p", "li"]):
+        elements.append(Paragraph(el.text, normal))
     else:
         elements.append(Paragraph("Шаблон договора не заполнен", normal))
 
@@ -621,11 +625,10 @@ with tab_contracts:
     default_text = template[0] if template else "Введите текст договора..."
 
     # Поле редактирования
-    new_text = st.text_area(
-        "Текст договора",
-        value=default_text,
-        height=400
-    )
+    new_text = st_quill(
+    value=default_text,
+    html=True
+)
 
     # Кнопка сохранить
     if st.button("💾 Сохранить шаблон"):
