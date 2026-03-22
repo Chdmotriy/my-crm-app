@@ -72,6 +72,14 @@ def generate_contract_pdf(client_info, payments):
     small = ParagraphStyle(name='Small', fontName='DejaVu', fontSize=9, leading=12)
 
     elements = []
+        # --- ПОДГРУЗКА ШАБЛОНА ---
+    with engine.connect() as conn:
+        tpl = conn.execute(
+            text("SELECT content FROM contract_templates LIMIT 1")
+        ).fetchone()
+
+    if tpl:
+        contract_text = render_template(tpl[0], client_info)
 
     # --- ДАННЫЕ ---
     today = datetime.now().strftime("%d.%m.%Y")
@@ -108,52 +116,12 @@ def generate_contract_pdf(client_info, payments):
     """
     elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 12))
-
-    # --- 1 ---
-    elements.append(Paragraph("1. ПРЕДМЕТ ДОГОВОРА", bold))
-    elements.append(Paragraph(
-        "1.1. Исполнитель обязуется оказать юридические услуги, а Заказчик обязуется их оплатить.",
-        normal
-    ))
-
-    elements.append(Paragraph("""
-    1.2. Перечень услуг:<br/>
-    • Составление заявления о банкротстве<br/>
-    • Подача документов в суд<br/>
-    • Представительство в суде<br/>
-    • Полное сопровождение процедуры
-    """, normal))
-
-    elements.append(Paragraph(
-        f"1.3. Стоимость услуг: <b>{client_info[4]:,.0f} рублей</b>.",
-        normal
-    ))
-
-    # --- 2 ---
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph("2. СРОК ДЕЙСТВИЯ", bold))
-    elements.append(Paragraph(
-        "2.1. Договор действует до полного исполнения обязательств.",
-        normal
-    ))
-
-    # --- 3 ---
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph("3. ОПЛАТА", bold))
-    elements.append(Paragraph(
-        "3.1. Оплата производится согласно графику (Приложение №1).",
-        normal
-    ))
-    elements.append(Paragraph(
-        "3.2. Оплата возможна наличными или безналичным способом.",
-        normal
-    ))
-
-    # --- 4 ---
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph("4. ОБЯЗАННОСТИ СТОРОН", bold))
-    elements.append(Paragraph("4.1. Исполнитель обязан качественно оказать услуги.", normal))
-    elements.append(Paragraph("4.2. Заказчик обязан своевременно оплатить услуги.", normal))
+# --- ТЕКСТ ДОГОВОРА ИЗ CRM ---
+if tpl and tpl[0].strip():
+    contract_text = render_template(tpl[0], client_info)
+    elements.append(Paragraph(contract_text, normal))
+else:
+    elements.append(Paragraph("Шаблон договора не заполнен", normal))
 
     # --- ПОДПИСИ ---
     elements.append(Spacer(1, 40))
@@ -204,6 +172,13 @@ def generate_contract_pdf(client_info, payments):
     pdf = buffer.getvalue()
     buffer.close()
     return pdf
+
+def render_template(text, client_info):
+    return text \
+        .replace("{client_name}", client_info[0]) \
+        .replace("{passport}", str(client_info[5] or "")) \
+        .replace("{address}", str(client_info[8] or "")) \
+        .replace("{amount}", f"{client_info[4]:,.0f}")
 # --- 1. НАСТРОЙКИ ---
 st.set_page_config(page_title="CRM Interactive Pro", layout="wide")
 ADMIN_PASSWORD = "D17v01ch89!" # ЗАМЕНИТЕ НА СВОЙ
@@ -239,6 +214,13 @@ with engine.begin() as conn:
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS contract_templates (
+            id SERIAL PRIMARY KEY,
+            content TEXT
+        )
+    """))
 # --- 3. ГЛАВНЫЕ МЕТРИКИ (ИСПРАВЛЕНО) ---
 st.title("🏦 Интерактивная CRM")
 
@@ -262,8 +244,13 @@ c4.metric("Касса (факт)", f"{(p_rev - p_exp):,.0f} ₽")
 st.divider()
 
 # --- 4. ВКЛАДКИ ---
-tab_cal, tab_flow, tab_reestr, tab_details, tab_add = st.tabs([
-    "📅 Календарь", "📈 Аналитика", "📋 Реестр", "🔍 Карточка", "➕ Новая сделка"
+tab_cal, tab_flow, tab_reestr, tab_details, tab_add, tab_contracts = st.tabs([
+    "📅 Календарь",
+    "📈 Аналитика",
+    "📋 Реестр",
+    "🔍 Карточка",
+    "➕ Новая сделка",
+    "📄 Шаблон договора"
 ])
 
 # Вкладка 1: Интерактивный календарь
@@ -614,7 +601,34 @@ with tab_add:
                 if pass_match: st.session_state.ocr_pass = pass_match.group(0)
                 
             st.success("Документ обработан! Проверьте заполненные поля ниже.")
+with tab_contracts:
+    st.subheader("✍️ Редактор договора")
 
+    # Получаем текущий шаблон
+    with engine.connect() as conn:
+        template = conn.execute(
+            text("SELECT content FROM contract_templates LIMIT 1")
+        ).fetchone()
+
+    default_text = template[0] if template else "Введите текст договора..."
+
+    # Поле редактирования
+    new_text = st.text_area(
+        "Текст договора",
+        value=default_text,
+        height=400
+    )
+
+    # Кнопка сохранить
+    if st.button("💾 Сохранить шаблон"):
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM contract_templates"))
+            conn.execute(
+                text("INSERT INTO contract_templates (content) VALUES (:c)"),
+                {"c": new_text}
+            )
+
+        st.success("Шаблон сохранён")
     st.divider()
 
     with st.form("new_deal"):
