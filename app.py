@@ -570,7 +570,8 @@ with tab_add:
                     steps = 1 if tp == "Сразу" else int(m)
                     amount_per_step = round(t / steps, 2)
                     for i in range(steps):
-                        p_date = d + timedelta(days=i*30)
+                        from dateutil.relativedelta import relativedelta
+                        p_date = d + relativedelta(months=i)
                         conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:cid, :dt, :am, 'Ожидается')"),
                                      {"cid":cid, "dt":p_date, "am":amount_per_step})
                 
