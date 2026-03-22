@@ -9,6 +9,8 @@ import pytesseract
 from PIL import Image
 import io
 import re
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 # Для облака Streamlit путь указывать НЕ НУЖНО, 
 # система найдет его сама после добавления packages.txt
@@ -19,122 +21,97 @@ def add_log(client_id, action, details=""):
             VALUES (:cid, :act, :det)
         """), {"cid": client_id, "act": action, "det": details})
 def generate_contract_pdf(client_info, payments):
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
     from io import BytesIO
     from datetime import datetime
 
-    buffer = BytesIO()
+    COMPANY_NAME = "СФЕРА БАНКРОТСТВА"  # ← поменяй на свою компанию
 
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=25,
-        rightMargin=25,
-        topMargin=25,
-        bottomMargin=25
-    )
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
 
     styles = getSampleStyleSheet()
+
+    # 🔴 ВАЖНО — шрифт
+    styles['Normal'].fontName = 'DejaVu'
+    styles['Title'].fontName = 'DejaVu'
+    styles['Heading2'].fontName = 'DejaVu'
+
     elements = []
 
-    # --- ЗАГОЛОВОК ---
-    elements.append(Paragraph("<b>ДОГОВОР ОКАЗАНИЯ УСЛУГ</b>", styles['Title']))
-    elements.append(Spacer(1, 12))
+    # --- ЛОГОТИП ---
+    try:
+        logo = Image("logo.png", width=120, height=50)
+        elements.append(logo)
+    except:
+        pass  # если нет логотипа — не падаем
 
+    elements.append(Spacer(1, 10))
+
+    # --- НАЗВАНИЕ КОМПАНИИ ---
+    elements.append(Paragraph(f"<b>{COMPANY_NAME}</b>", styles['Title']))
+    elements.append(Spacer(1, 10))
+
+    # --- НОМЕР ДОГОВОРА ---
     today = datetime.now().strftime("%d.%m.%Y")
-    contract_no = client_info[2] if client_info[2] else "—"
 
-    elements.append(Paragraph(f"№ {contract_no} от {today}", styles['Normal']))
-    elements.append(Spacer(1, 12))
+    contract_no = client_info[2]
+    if not contract_no:
+        contract_no = f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
 
-    # --- СТОРОНЫ ---
-    elements.append(Paragraph("<b>1. Стороны договора</b>", styles['Heading2']))
-    elements.append(Spacer(1, 6))
+    elements.append(Paragraph(f"ДОГОВОР № {contract_no}", styles['Heading2']))
+    elements.append(Paragraph(f"от {today}", styles['Normal']))
 
-    elements.append(Paragraph(
-        f"Исполнитель: ____________________________", styles['Normal']
-    ))
-    elements.append(Paragraph(
-        f"Заказчик: {client_info[0]}", styles['Normal']
-    ))
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 15))
 
-    # --- ДАННЫЕ КЛИЕНТА ---
-    elements.append(Paragraph("<b>2. Данные заказчика</b>", styles['Heading2']))
-    elements.append(Spacer(1, 6))
-
+    # --- КЛИЕНТ ---
+    elements.append(Paragraph(f"Заказчик: {client_info[0]}", styles['Normal']))
     elements.append(Paragraph(f"Паспорт: {client_info[5] or '—'}", styles['Normal']))
     elements.append(Paragraph(f"ИНН: {client_info[7] or '—'}", styles['Normal']))
     elements.append(Paragraph(f"СНИЛС: {client_info[6] or '—'}", styles['Normal']))
-    elements.append(Paragraph(f"Адрес: {client_info[8] or '—'}", styles['Normal']))
+    elements.append(Spacer(1, 15))
 
-    elements.append(Spacer(1, 12))
-
-    # --- ПРЕДМЕТ ДОГОВОРА ---
-    elements.append(Paragraph("<b>3. Предмет договора</b>", styles['Heading2']))
-    elements.append(Spacer(1, 6))
-
+    # --- СУММА ---
     elements.append(Paragraph(
-        f"Исполнитель обязуется оказать услуги, а Заказчик обязуется оплатить их стоимость в размере {client_info[4]:,.0f} ₽.",
+        f"Сумма договора: <b>{client_info[4]:,.0f} ₽</b>",
         styles['Normal']
     ))
 
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 15))
 
-    # --- ГРАФИК ПЛАТЕЖЕЙ ---
-    elements.append(Paragraph("<b>4. График платежей</b>", styles['Heading2']))
-    elements.append(Spacer(1, 6))
-
+    # --- ТАБЛИЦА ---
     data = [["№", "Дата", "Сумма"]]
 
     for i, row in enumerate(payments.iterrows(), start=1):
         _, r = row
-        data.append([
-            str(i),
-            str(r['date']),
-            f"{r['amount']:,.0f} ₽"
-        ])
+        data.append([str(i), str(r['date']), f"{r['amount']:,.0f} ₽"])
 
-    table = Table(data, colWidths=[40, 100, 100])
+    table = Table(data)
 
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.black),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
 
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-
-        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
     ]))
 
+    elements.append(Paragraph("График платежей:", styles['Heading2']))
     elements.append(table)
 
-    elements.append(Spacer(1, 20))
-
-    # --- УСЛОВИЯ ---
-    elements.append(Paragraph("<b>5. Условия</b>", styles['Heading2']))
-    elements.append(Spacer(1, 6))
-
-    elements.append(Paragraph(
-        "Оплата производится согласно графику. В случае просрочки возможны штрафные санкции.",
-        styles['Normal']
-    ))
-
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 30))
 
     # --- ПОДПИСИ ---
-    elements.append(Paragraph("<b>6. Подписи сторон</b>", styles['Heading2']))
+    elements.append(Paragraph("Подписи сторон:", styles['Heading2']))
     elements.append(Spacer(1, 20))
 
     sign_table = Table([
         ["Исполнитель", "Заказчик"],
-        ["______________", "______________"],
-        ["Подпись", "Подпись"]
-    ], colWidths=[200, 200])
+        ["______________", "______________"]
+    ])
 
     elements.append(sign_table)
 
@@ -161,6 +138,7 @@ try:
 except:
     DB_URL = "postgresql://neondb_owner:npg_ymONePvDcf43@ep-snowy-forest-a4f6efz3-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require"
 engine = sqlalchemy.create_engine(DB_URL)
+pdfmetrics.registerFont(TTFont('DejaVu', 'DejaVuSans.ttf'))
 with engine.begin() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS client_files (
