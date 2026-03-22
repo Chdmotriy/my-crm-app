@@ -43,7 +43,6 @@ def generate_contract_pdf(client_info, payments):
     elements = []
 
 # --- ШАПКА: ЛОГОТИП + НОМЕР ---
-    from reportlab.platypus import Image, Table, TableStyle
     
     today = datetime.now().strftime("%d.%m.%Y")
     contract_no = client_info[2]
