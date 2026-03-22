@@ -136,8 +136,13 @@ def generate_contract_pdf(client_info, payments):
 # --- ТЕКСТ ДОГОВОРА ИЗ CRM ---
     if tpl and tpl[0] and tpl[0].strip():
         contract_text = render_template(tpl[0], client_info)
+        
+        # 🔹 ВСТАВЬ ПРОВЕРКУ СЮДА
+        print("TEMPLATE CONTENT:", tpl[0])          # что хранится в базе
+        print("CONTRACT TEXT:", contract_text)      # что получится после подстановки
     else:
         contract_text = "Шаблон договора не заполнен"
+        print("No template found")
 
 
     # --- 🔥 НОВАЯ СТРАНИЦА ---
