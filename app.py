@@ -129,21 +129,6 @@ def generate_contract_pdf(client_info, payments):
     else:
         contract_text = "Шаблон договора не заполнен"
 
-    # --- ПОДПИСИ ---
-    elements.append(Spacer(1, 40))
-
-    sign_table = Table([
-        ["Исполнитель", "Заказчик"],
-        [
-            f"{COMPANY_NAME}<br/><br/>__________________",
-            f"{client_info[0]}<br/><br/>__________________"
-        ]
-    ], colWidths=[250, 250])
-
-    sign_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-    ]))
 
     elements.append(sign_table)
 
