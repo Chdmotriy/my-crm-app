@@ -40,7 +40,7 @@ with engine.begin() as conn:
         CREATE TABLE IF NOT EXISTS client_files (
             id SERIAL PRIMARY KEY,
             client_id INTEGER,
-            file_name TEXT,
+            filename TEXT,
             file_type TEXT,
             file_data BYTEA,
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -314,7 +314,7 @@ with tab_details:
 
                     with engine.begin() as conn:
                         conn.execute(text("""
-                            INSERT INTO client_files (client_id, file_name, file_type, file_data)
+                            INSERT INTO client_files (client_id, filename, file_type, file_data)
                             VALUES (:cid, :name, :type, :data)
                         """), {
                             "cid": c_id,
@@ -330,7 +330,7 @@ with tab_details:
         
         with engine.connect() as conn:
             files_df = pd.read_sql(
-                text("SELECT id, file_name, file_type FROM client_files WHERE client_id = :id"),
+                text("SELECT id, filename, file_type FROM client_files WHERE client_id = :id"),
                 conn,
                 params={"id": c_id}
             )
@@ -348,7 +348,7 @@ with tab_details:
                         col1, col2 = st.columns([4, 1])
         
                         with col1:
-                            st.write(f"📄 {f['file_name']}")
+                            st.write(f"📄 {f['filename']}")
         
                         with col2:
                             if st.button("🗑️", key=f"del_{f['id']}"):
@@ -396,7 +396,7 @@ with tab_details:
             st.download_button(
                 "📥 Скачать договор",
                 contract_text,
-                file_name=f"contract_{c_info[0]}.txt"
+                filename=f"contract_{c_info[0]}.txt"
             )
 
     else:
