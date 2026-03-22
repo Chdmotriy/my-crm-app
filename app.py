@@ -28,14 +28,14 @@ def generate_contract_pdf(client_info, payments):
     from io import BytesIO
     from datetime import datetime
 
-    COMPANY_NAME = "СФЕРА БАНКРОТСТВА"  # ← поменяй на свою компанию
+    COMPANY_NAME = "ООО Рога и Копыта"  # ← поменяй на свою компанию
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
 
     styles = getSampleStyleSheet()
 
-    # 🔴 ВАЖНО — шрифт
+    # 🔴 Устанавливаем шрифт DejaVu для кириллицы
     styles['Normal'].fontName = 'DejaVu'
     styles['Title'].fontName = 'DejaVu'
     styles['Heading2'].fontName = 'DejaVu'
@@ -47,7 +47,7 @@ def generate_contract_pdf(client_info, payments):
         logo = Image("logo.png", width=120, height=50)
         elements.append(logo)
     except:
-        pass  # если нет логотипа — не падаем
+        pass  # если логотипа нет — продолжаем
 
     elements.append(Spacer(1, 10))
 
@@ -57,61 +57,62 @@ def generate_contract_pdf(client_info, payments):
 
     # --- НОМЕР ДОГОВОРА ---
     today = datetime.now().strftime("%d.%m.%Y")
-
     contract_no = client_info[2]
     if not contract_no:
         contract_no = f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
-
     elements.append(Paragraph(f"ДОГОВОР № {contract_no}", styles['Heading2']))
     elements.append(Paragraph(f"от {today}", styles['Normal']))
-
     elements.append(Spacer(1, 15))
 
-    # --- КЛИЕНТ ---
+    # --- ДАННЫЕ КЛИЕНТА ---
     elements.append(Paragraph(f"Заказчик: {client_info[0]}", styles['Normal']))
     elements.append(Paragraph(f"Паспорт: {client_info[5] or '—'}", styles['Normal']))
     elements.append(Paragraph(f"ИНН: {client_info[7] or '—'}", styles['Normal']))
     elements.append(Paragraph(f"СНИЛС: {client_info[6] or '—'}", styles['Normal']))
+    elements.append(Paragraph(f"Адрес: {client_info[8] or '—'}", styles['Normal']))
     elements.append(Spacer(1, 15))
 
     # --- СУММА ---
-    elements.append(Paragraph(
-        f"Сумма договора: <b>{client_info[4]:,.0f} ₽</b>",
-        styles['Normal']
-    ))
-
+    elements.append(Paragraph(f"Сумма договора: <b>{client_info[4]:,.0f} \u20BD</b>", styles['Normal']))
     elements.append(Spacer(1, 15))
 
-    # --- ТАБЛИЦА ---
+    # --- ТАБЛИЦА ГРАФИКА ПЛАТЕЖЕЙ ---
     data = [["№", "Дата", "Сумма"]]
 
     for i, row in enumerate(payments.iterrows(), start=1):
         _, r = row
-        data.append([str(i), str(r['date']), f"{r['amount']:,.0f} ₽"])
+        data.append([str(i), str(r['date']), f"{r['amount']:,.0f} \u20BD"])  # ₽ корректно
 
     table = Table(data)
 
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.black),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-
-        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-    ]))
+    # --- Стили таблицы ---
+    table_style = TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),       # шрифт для всей таблицы
+        ('BACKGROUND', (0,0), (-1,0), colors.black),  # заголовок черный
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),   # текст заголовка белый
+        ('GRID', (0,0), (-1,-1), 1, colors.grey),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('BACKGROUND', (0,1), (-1,-1), colors.whitesmoke),
+    ])
+    table.setStyle(table_style)
 
     elements.append(Paragraph("График платежей:", styles['Heading2']))
     elements.append(table)
-
     elements.append(Spacer(1, 30))
 
     # --- ПОДПИСИ ---
     elements.append(Paragraph("Подписи сторон:", styles['Heading2']))
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 10))
 
+    # используем длинное тире вместо _
     sign_table = Table([
         ["Исполнитель", "Заказчик"],
-        ["______________", "______________"]
+        ["\u2014\u2014\u2014\u2014\u2014\u2014\u2014", "\u2014\u2014\u2014\u2014\u2014\u2014\u2014"]
     ])
+    sign_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER')
+    ]))
 
     elements.append(sign_table)
 
@@ -119,7 +120,6 @@ def generate_contract_pdf(client_info, payments):
 
     pdf = buffer.getvalue()
     buffer.close()
-
     return pdf
 # --- 1. НАСТРОЙКИ ---
 st.set_page_config(page_title="CRM Interactive Pro", layout="wide")
