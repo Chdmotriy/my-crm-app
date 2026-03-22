@@ -10,3 +10,4 @@ pytesseract
 Pillow
 reportlab
 streamlit-quill
+beautifulsoup4
