@@ -402,8 +402,11 @@ with tab_details:
         with col1:
             if st.button("🤖 Распознать", key=f"ocr_{c_id}"):
                 if uploaded_doc:
-                    image = Image.open(uploaded_doc)
-                    text_ocr = pytesseract.image_to_string(image, lang='rus+eng')
+                    try:
+                        image = Image.open(uploaded_doc)
+                        text_ocr = pytesseract.image_to_string(image, lang='rus+eng')
+                    except Exception as e:
+                        st.error(f"OCR ошибка: {e}")
 
                     snils_match = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text_ocr)
                     inn_match = re.search(r'\b\d{10,12}\b', text_ocr)
