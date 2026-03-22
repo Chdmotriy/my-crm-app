@@ -38,8 +38,8 @@ def generate_contract_pdf(client_info, payments):
     # --- СТИЛИ ---
     normal = ParagraphStyle(name='Normal', fontName='DejaVu', fontSize=10, leading=14)
     bold = ParagraphStyle(name='Bold', fontName='DejaVu', fontSize=10, leading=14, spaceAfter=6)
-    title = ParagraphStyle(name='Title', fontName='DejaVu', fontSize=14, leading=16, alignment=1, spaceAfter=12)
-    header = ParagraphStyle(name='Header', fontName='DejaVu', fontSize=10, alignment=2)
+    title = ParagraphStyle(name='Title', fontName='DejaVu', fontSize=14, alignment=1, spaceAfter=12)
+    right = ParagraphStyle(name='Right', fontName='DejaVu', fontSize=10, alignment=2)
 
     elements = []
 
@@ -52,9 +52,9 @@ def generate_contract_pdf(client_info, payments):
     except:
         logo = Paragraph("", normal)
 
-    header_text = Paragraph(f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}", header)
+    header_text = Paragraph(f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}", right)
 
-    header_table = Table([[logo, header_text]], colWidths=[100, 350])
+    header_table = Table([[logo, header_text]], colWidths=[120, 320])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
@@ -64,51 +64,93 @@ def generate_contract_pdf(client_info, payments):
     elements.append(Spacer(1, 20))
 
     # --- ЗАГОЛОВОК ---
-    elements.append(Paragraph("ДОГОВОР ОКАЗАНИЯ ЮРИДИЧЕСКИХ УСЛУГ", title))
-    elements.append(Paragraph(f"{today}", normal))
+    elements.append(Paragraph("ДОГОВОР ВОЗМЕЗДНОГО ОКАЗАНИЯ ЮРИДИЧЕСКИХ УСЛУГ", title))
+    elements.append(Paragraph(f"г. Волгоград, {today}", normal))
     elements.append(Spacer(1, 12))
 
-    # --- ВСТУПЛЕНИЕ ---
+    # --- СТОРОНЫ ---
     intro = f"""
     {client_info[0]}, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу: {client_info[8] or '—'},
-    именуемый в дальнейшем <b>«Заказчик»</b>, и Исполнитель, заключили настоящий договор:
+    именуемый в дальнейшем <b>«Заказчик»</b>, с одной стороны, и Исполнитель,
+    именуемый в дальнейшем <b>«Исполнитель»</b>, заключили настоящий договор:
     """
     elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 10))
 
     # --- 1. ПРЕДМЕТ ---
     elements.append(Paragraph("1. ПРЕДМЕТ ДОГОВОРА", bold))
-    elements.append(Paragraph("1.1. Исполнитель обязуется оказать юридические услуги, а Заказчик обязуется их оплатить.", normal))
+    elements.append(Paragraph(
+        "1.1. Исполнитель обязуется оказать Заказчику юридические услуги, а Заказчик обязуется их оплатить.",
+        normal
+    ))
 
     elements.append(Paragraph("""
-    1.2. Перечень услуг:
-    • Полное сопровождение процедуры банкротства гражданина<br/>
-    • Подготовка и подача заявления<br/>
-    • Участие в судебных заседаниях<br/>
-    • Сопровождение процедуры
+    1.2. Перечень оказываемых услуг:<br/>
+    а) Составление заявления о признании гражданина банкротом;<br/>
+    б) Направление заявления;<br/>
+    в) Участие в судебных заседаниях;<br/>
+    г) Сопровождение процедуры банкротства.
     """, normal))
 
-    elements.append(Paragraph(f"1.3. Стоимость услуг: <b>{client_info[4]:,.0f} ₽</b>", normal))
+    elements.append(Paragraph(
+        f"1.3. Стоимость услуг составляет <b>{client_info[4]:,.0f} рублей</b>.",
+        normal
+    ))
 
     # --- 2. СРОК ---
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("2. СРОК ДЕЙСТВИЯ", bold))
-    elements.append(Paragraph("2.1. Договор действует до полного исполнения обязательств.", normal))
+    elements.append(Paragraph("2. СРОК ДЕЙСТВИЯ ДОГОВОРА", bold))
+    elements.append(Paragraph(
+        "2.1. Договор действует с момента подписания до полного исполнения обязательств.",
+        normal
+    ))
 
     # --- 3. ОПЛАТА ---
     elements.append(Spacer(1, 10))
     elements.append(Paragraph("3. ОПЛАТА УСЛУГ", bold))
-    elements.append(Paragraph("3.1. Оплата осуществляется согласно графику (Приложение №1).", normal))
+    elements.append(Paragraph(
+        "3.1. Оплата производится согласно графику (Приложение №1).",
+        normal
+    ))
+    elements.append(Paragraph(
+        "3.2. Оплата может осуществляться наличными или безналичным способом.",
+        normal
+    ))
+
+    # --- 4. ОБЯЗАННОСТИ ---
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph("4. ПРАВА И ОБЯЗАННОСТИ СТОРОН", bold))
+    elements.append(Paragraph("4.1. Исполнитель обязан оказывать услуги качественно.", normal))
+    elements.append(Paragraph("4.2. Заказчик обязан своевременно оплачивать услуги.", normal))
+
+    # --- 5. РЕКВИЗИТЫ ---
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph("5. РЕКВИЗИТЫ СТОРОН", bold))
+
+    rec_table = Table([
+        ["Исполнитель", "Заказчик"],
+        [
+            "Чадов Дмитрий Вячеславович<br/>г. Волгоград",
+            f"{client_info[0]}<br/>{client_info[8] or ''}"
+        ]
+    ], colWidths=[250, 250])
+
+    rec_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+    ]))
+
+    elements.append(rec_table)
 
     # --- ГРАФИК ---
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 20))
     elements.append(Paragraph("Приложение №1. График платежей", bold))
 
     data = [["№", "Дата", "Сумма"]]
     for i, (_, r) in enumerate(payments.iterrows(), start=1):
         data.append([i, str(r['date']), f"{r['amount']:,.0f} ₽"])
 
-    table = Table(data, colWidths=[40, 150, 150])
+    table = Table(data, colWidths=[50, 150, 150])
     table.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
         ('BACKGROUND', (0,0), (-1,0), colors.black),
@@ -121,12 +163,10 @@ def generate_contract_pdf(client_info, payments):
 
     # --- ПОДПИСИ ---
     elements.append(Spacer(1, 30))
-    elements.append(Paragraph("Подписи сторон:", bold))
-
     sign_table = Table([
         ["Исполнитель", "Заказчик"],
         ["__________________", "__________________"]
-    ], colWidths=[200, 200])
+    ], colWidths=[250, 250])
 
     sign_table.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
