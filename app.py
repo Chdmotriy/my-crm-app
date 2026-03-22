@@ -147,7 +147,13 @@ try:
 except:
     DB_URL = "postgresql://neondb_owner:npg_ymONePvDcf43@ep-snowy-forest-a4f6efz3-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require"
 engine = sqlalchemy.create_engine(DB_URL)
-pdfmetrics.registerFont(TTFont('DejaVu', 'DejaVuSans.ttf'))
+import os
+
+font_path = "DejaVuSans.ttf"
+if os.path.exists(font_path):
+    pdfmetrics.registerFont(TTFont('DejaVu', font_path))
+else:
+    st.warning("Шрифт DejaVuSans.ttf не найден!")
 with engine.begin() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS client_files (
