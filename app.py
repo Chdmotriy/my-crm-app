@@ -22,102 +22,112 @@ def add_log(client_id, action, details=""):
         """), {"cid": client_id, "act": action, "det": details})
 def generate_contract_pdf(client_info, payments):
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from io import BytesIO
     from datetime import datetime
 
-    COMPANY_NAME = "Сфера Банкротства"  # ← поменяй на свою компанию
-
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            rightMargin=40, leftMargin=40,
+                            topMargin=40, bottomMargin=40)
 
     styles = getSampleStyleSheet()
 
-    # 🔴 Устанавливаем шрифт DejaVu для кириллицы
-    styles['Normal'].fontName = 'DejaVu'
-    styles['Title'].fontName = 'DejaVu'
-    styles['Heading2'].fontName = 'DejaVu'
+    # --- СТИЛИ ---
+    normal = ParagraphStyle(name='Normal', fontName='DejaVu', fontSize=10, leading=14)
+    bold = ParagraphStyle(name='Bold', fontName='DejaVu', fontSize=10, leading=14, spaceAfter=6)
+    title = ParagraphStyle(name='Title', fontName='DejaVu', fontSize=14, leading=16, alignment=1, spaceAfter=12)
+    header = ParagraphStyle(name='Header', fontName='DejaVu', fontSize=10, alignment=2)
 
     elements = []
 
-# --- ШАПКА: ЛОГОТИП + НОМЕР ---
-    
+    # --- ШАПКА ---
     today = datetime.now().strftime("%d.%m.%Y")
-    contract_no = client_info[2]
-    if not contract_no:
-        contract_no = f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
-    
-    # логотип
+    contract_no = client_info[2] or f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
+
     try:
         logo = Image("logo.png", width=80, height=40)
     except:
-        logo = Paragraph("", styles['Normal'])
-    
-    # правая часть (номер и дата)
-    header_text = Paragraph(
-        f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}",
-        styles['Normal']
-    )
-    
-    header_table = Table([
-        [logo, header_text]
-    ], colWidths=[100, 300])
-    
+        logo = Paragraph("", normal)
+
+    header_text = Paragraph(f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}", header)
+
+    header_table = Table([[logo, header_text]], colWidths=[100, 350])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
     ]))
-    
+
     elements.append(header_table)
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 20))
 
-    # --- ДАННЫЕ КЛИЕНТА ---
-    elements.append(Paragraph(f"Заказчик: {client_info[0]}", styles['Normal']))
-    elements.append(Paragraph(f"Паспорт: {client_info[5] or '—'}", styles['Normal']))
-    elements.append(Paragraph(f"ИНН: {client_info[7] or '—'}", styles['Normal']))
-    elements.append(Paragraph(f"СНИЛС: {client_info[6] or '—'}", styles['Normal']))
-    elements.append(Paragraph(f"Адрес: {client_info[8] or '—'}", styles['Normal']))
-    elements.append(Spacer(1, 15))
+    # --- ЗАГОЛОВОК ---
+    elements.append(Paragraph("ДОГОВОР ОКАЗАНИЯ ЮРИДИЧЕСКИХ УСЛУГ", title))
+    elements.append(Paragraph(f"г. _________, {today}", normal))
+    elements.append(Spacer(1, 12))
 
-    # --- СУММА ---
-    elements.append(Paragraph(f"Сумма договора: <b>{client_info[4]:,.0f} \u20BD</b>", styles['Normal']))
-    elements.append(Spacer(1, 15))
-
-    # --- ТАБЛИЦА ГРАФИКА ПЛАТЕЖЕЙ ---
-    data = [["№", "Дата", "Сумма"]]
-
-    for i, row in enumerate(payments.iterrows(), start=1):
-        _, r = row
-        data.append([str(i), str(r['date']), f"{r['amount']:,.0f} \u20BD"])  # ₽ корректно
-
-    table = Table(data)
-
-    # --- Стили таблицы ---
-    table_style = TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),       # шрифт для всей таблицы
-        ('BACKGROUND', (0,0), (-1,0), colors.black),  # заголовок черный
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),   # текст заголовка белый
-        ('GRID', (0,0), (-1,-1), 1, colors.grey),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('BACKGROUND', (0,1), (-1,-1), colors.whitesmoke),
-    ])
-    table.setStyle(table_style)
-
-    elements.append(Paragraph("График платежей:", styles['Heading2']))
-    elements.append(table)
-    elements.append(Spacer(1, 30))
-
-    # --- ПОДПИСИ ---
-    elements.append(Paragraph("Подписи сторон:", styles['Heading2']))
+    # --- ВСТУПЛЕНИЕ ---
+    intro = f"""
+    {client_info[0]}, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу: {client_info[8] or '—'},
+    именуемый в дальнейшем <b>«Заказчик»</b>, и Исполнитель, заключили настоящий договор:
+    """
+    elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 10))
 
-    # используем длинное тире вместо _
+    # --- 1. ПРЕДМЕТ ---
+    elements.append(Paragraph("1. ПРЕДМЕТ ДОГОВОРА", bold))
+    elements.append(Paragraph("1.1. Исполнитель обязуется оказать юридические услуги, а Заказчик обязуется их оплатить.", normal))
+
+    elements.append(Paragraph("""
+    1.2. Перечень услуг:
+    • Полное сопровождение процедуры банкротства гражданина<br/>
+    • Подготовка и подача заявления<br/>
+    • Участие в судебных заседаниях<br/>
+    • Сопровождение процедуры
+    """, normal))
+
+    elements.append(Paragraph(f"1.3. Стоимость услуг: <b>{client_info[4]:,.0f} ₽</b>", normal))
+
+    # --- 2. СРОК ---
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph("2. СРОК ДЕЙСТВИЯ", bold))
+    elements.append(Paragraph("2.1. Договор действует до полного исполнения обязательств.", normal))
+
+    # --- 3. ОПЛАТА ---
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph("3. ОПЛАТА УСЛУГ", bold))
+    elements.append(Paragraph("3.1. Оплата осуществляется согласно графику (Приложение №1).", normal))
+
+    # --- ГРАФИК ---
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph("Приложение №1. График платежей", bold))
+
+    data = [["№", "Дата", "Сумма"]]
+    for i, (_, r) in enumerate(payments.iterrows(), start=1):
+        data.append([i, str(r['date']), f"{r['amount']:,.0f} ₽"])
+
+    table = Table(data, colWidths=[40, 150, 150])
+    table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
+        ('BACKGROUND', (0,0), (-1,0), colors.black),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+    ]))
+
+    elements.append(table)
+
+    # --- ПОДПИСИ ---
+    elements.append(Spacer(1, 30))
+    elements.append(Paragraph("Подписи сторон:", bold))
+
     sign_table = Table([
         ["Исполнитель", "Заказчик"],
-        ["\u2014\u2014\u2014\u2014\u2014\u2014\u2014", "\u2014\u2014\u2014\u2014\u2014\u2014\u2014"]
-    ])
+        ["__________________", "__________________"]
+    ], colWidths=[200, 200])
+
     sign_table.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER')
