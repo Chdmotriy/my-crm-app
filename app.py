@@ -11,6 +11,7 @@ import io
 import re
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from streamlit_quill import st_quill
 COMPANY_NAME = "Чадов Дмитрий Вячеславович"
 COMPANY_PASSPORT = "паспорт серия 1808 №248570"
 COMPANY_ADDRESS = "г. Волгоград, ул. Шурухина, д.86/155"
