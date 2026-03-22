@@ -11,7 +11,10 @@ import io
 import re
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-
+COMPANY_NAME = "Чадов Дмитрий Вячеславович"
+COMPANY_PASSPORT = "паспорт серия 1808 №248570"
+COMPANY_ADDRESS = "г. Волгоград, ул. Шурухина, д.86/155"
+COMPANY_PHONE = "+79197920717"
 # Для облака Streamlit путь указывать НЕ НУЖНО, 
 # система найдет его сама после добавления packages.txt
 def add_log(client_id, action, details=""):
@@ -21,7 +24,7 @@ def add_log(client_id, action, details=""):
             VALUES (:cid, :act, :det)
         """), {"cid": client_id, "act": action, "det": details})
 def generate_contract_pdf(client_info, payments):
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -29,151 +32,151 @@ def generate_contract_pdf(client_info, payments):
     from datetime import datetime
 
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4,
-                            rightMargin=40, leftMargin=40,
-                            topMargin=40, bottomMargin=40)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=50,
+        bottomMargin=40
+    )
 
     styles = getSampleStyleSheet()
 
     # --- СТИЛИ ---
-    normal = ParagraphStyle(name='Normal', fontName='DejaVu', fontSize=10, leading=14)
-    bold = ParagraphStyle(name='Bold', fontName='DejaVu', fontSize=10, leading=14, spaceAfter=6)
-    title = ParagraphStyle(name='Title', fontName='DejaVu', fontSize=14, alignment=1, spaceAfter=12)
+    normal = ParagraphStyle(name='Normal', fontName='DejaVu', fontSize=10, leading=15)
+    bold = ParagraphStyle(name='Bold', fontName='DejaVu', fontSize=11, leading=15, spaceAfter=8)
+    title = ParagraphStyle(name='Title', fontName='DejaVu', fontSize=15, alignment=1, spaceAfter=14)
     right = ParagraphStyle(name='Right', fontName='DejaVu', fontSize=10, alignment=2)
+    small = ParagraphStyle(name='Small', fontName='DejaVu', fontSize=9, leading=12)
 
     elements = []
 
-    # --- ШАПКА ---
+    # --- ДАННЫЕ ---
     today = datetime.now().strftime("%d.%m.%Y")
     contract_no = client_info[2] or f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
 
+    # --- ШАПКА ---
     try:
-        logo = Image("logo.png", width=80, height=40)
+        logo = Image("logo.png", width=90, height=45)
     except:
         logo = Paragraph("", normal)
 
     header_text = Paragraph(f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}", right)
 
-    header_table = Table([[logo, header_text]], colWidths=[120, 320])
+    header_table = Table([[logo, header_text]], colWidths=[150, 300])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
     ]))
 
     elements.append(header_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 25))
 
     # --- ЗАГОЛОВОК ---
-    elements.append(Paragraph("ДОГОВОР ВОЗМЕЗДНОГО ОКАЗАНИЯ ЮРИДИЧЕСКИХ УСЛУГ", title))
+    elements.append(Paragraph("ДОГОВОР ОКАЗАНИЯ ЮРИДИЧЕСКИХ УСЛУГ", title))
     elements.append(Paragraph(f"г. Волгоград, {today}", normal))
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 15))
 
     # --- СТОРОНЫ ---
     intro = f"""
-    {client_info[0]}, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу: {client_info[8] or '—'},
-    именуемый в дальнейшем <b>«Заказчик»</b>, с одной стороны, и Исполнитель,
-    именуемый в дальнейшем <b>«Исполнитель»</b>, заключили настоящий договор:
+    <b>{client_info[0]}</b>, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу:
+    {client_info[8] or '—'}, именуемый «Заказчик», с одной стороны, и
+    <b>{COMPANY_NAME}</b>, {COMPANY_PASSPORT}, адрес: {COMPANY_ADDRESS},
+    именуемый «Исполнитель», с другой стороны, заключили настоящий договор:
     """
     elements.append(Paragraph(intro, normal))
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 12))
 
-    # --- 1. ПРЕДМЕТ ---
+    # --- 1 ---
     elements.append(Paragraph("1. ПРЕДМЕТ ДОГОВОРА", bold))
     elements.append(Paragraph(
-        "1.1. Исполнитель обязуется оказать Заказчику юридические услуги, а Заказчик обязуется их оплатить.",
+        "1.1. Исполнитель обязуется оказать юридические услуги, а Заказчик обязуется их оплатить.",
         normal
     ))
 
     elements.append(Paragraph("""
-    1.2. Перечень оказываемых услуг:<br/>
-    а) Составление заявления о признании гражданина банкротом;<br/>
-    б) Направление заявления;<br/>
-    в) Участие в судебных заседаниях;<br/>
-    г) Сопровождение процедуры банкротства.
+    1.2. Перечень услуг:<br/>
+    • Составление заявления о банкротстве<br/>
+    • Подача документов в суд<br/>
+    • Представительство в суде<br/>
+    • Полное сопровождение процедуры
     """, normal))
 
     elements.append(Paragraph(
-        f"1.3. Стоимость услуг составляет <b>{client_info[4]:,.0f} рублей</b>.",
+        f"1.3. Стоимость услуг: <b>{client_info[4]:,.0f} рублей</b>.",
         normal
     ))
 
-    # --- 2. СРОК ---
+    # --- 2 ---
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("2. СРОК ДЕЙСТВИЯ ДОГОВОРА", bold))
+    elements.append(Paragraph("2. СРОК ДЕЙСТВИЯ", bold))
     elements.append(Paragraph(
-        "2.1. Договор действует с момента подписания до полного исполнения обязательств.",
+        "2.1. Договор действует до полного исполнения обязательств.",
         normal
     ))
 
-    # --- 3. ОПЛАТА ---
+    # --- 3 ---
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("3. ОПЛАТА УСЛУГ", bold))
+    elements.append(Paragraph("3. ОПЛАТА", bold))
     elements.append(Paragraph(
         "3.1. Оплата производится согласно графику (Приложение №1).",
         normal
     ))
     elements.append(Paragraph(
-        "3.2. Оплата может осуществляться наличными или безналичным способом.",
+        "3.2. Оплата возможна наличными или безналичным способом.",
         normal
     ))
 
-    # --- 4. ОБЯЗАННОСТИ ---
+    # --- 4 ---
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("4. ПРАВА И ОБЯЗАННОСТИ СТОРОН", bold))
-    elements.append(Paragraph("4.1. Исполнитель обязан оказывать услуги качественно.", normal))
-    elements.append(Paragraph("4.2. Заказчик обязан своевременно оплачивать услуги.", normal))
-
-    # --- 5. РЕКВИЗИТЫ ---
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph("5. РЕКВИЗИТЫ СТОРОН", bold))
-
-    rec_table = Table([
-        ["Исполнитель", "Заказчик"],
-        [
-            "Чадов Дмитрий Вячеславович<br/>г. Волгоград",
-            f"{client_info[0]}<br/>{client_info[8] or ''}"
-        ]
-    ], colWidths=[250, 250])
-
-    rec_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-    ]))
-
-    elements.append(rec_table)
-
-    # --- ГРАФИК ---
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph("Приложение №1. График платежей", bold))
-
-    data = [["№", "Дата", "Сумма"]]
-    for i, (_, r) in enumerate(payments.iterrows(), start=1):
-        data.append([i, str(r['date']), f"{r['amount']:,.0f} ₽"])
-
-    table = Table(data, colWidths=[50, 150, 150])
-    table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
-        ('BACKGROUND', (0,0), (-1,0), colors.black),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-    ]))
-
-    elements.append(table)
+    elements.append(Paragraph("4. ОБЯЗАННОСТИ СТОРОН", bold))
+    elements.append(Paragraph("4.1. Исполнитель обязан качественно оказать услуги.", normal))
+    elements.append(Paragraph("4.2. Заказчик обязан своевременно оплатить услуги.", normal))
 
     # --- ПОДПИСИ ---
-    elements.append(Spacer(1, 30))
+    elements.append(Spacer(1, 40))
+
     sign_table = Table([
         ["Исполнитель", "Заказчик"],
-        ["__________________", "__________________"]
+        [
+            f"{COMPANY_NAME}<br/><br/>__________________",
+            f"{client_info[0]}<br/><br/>__________________"
+        ]
     ], colWidths=[250, 250])
 
     sign_table.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER')
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
     ]))
 
     elements.append(sign_table)
+
+    # --- 🔥 НОВАЯ СТРАНИЦА ---
+    elements.append(PageBreak())
+
+    # --- ПРИЛОЖЕНИЕ ---
+    elements.append(Paragraph("Приложение №1", title))
+    elements.append(Paragraph("График платежей", bold))
+    elements.append(Spacer(1, 10))
+
+    data = [["№", "Дата платежа", "Сумма"]]
+
+    for i, (_, r) in enumerate(payments.iterrows(), start=1):
+        data.append([i, str(r['date']), f"{r['amount']:,.0f} ₽"])
+
+    table = Table(data, colWidths=[60, 180, 180])
+
+    table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2c2c2c")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.lightgrey])
+    ]))
+
+    elements.append(table)
 
     doc.build(elements)
 
