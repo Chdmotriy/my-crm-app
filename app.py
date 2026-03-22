@@ -318,16 +318,16 @@ with tab_details:
 
         st.markdown("### 📂 Загруженные документы")
 
-       try:
-    with engine.connect() as conn:
-        files_df = pd.read_sql(
-            text("SELECT id, file_name, file_type FROM client_files WHERE client_id = :id"),
-            conn,
-            params={"id": c_id}
-        )
-except:
-    st.warning("⚠️ Таблица для файлов не создана")
-    files_df = pd.DataFrame()
+        try:
+            with engine.connect() as conn:
+                files_df = pd.read_sql(
+                    text("SELECT id, file_name, file_type FROM client_files WHERE client_id = :id"),
+                    conn,
+                    params={"id": c_id}
+                )
+        except:
+            st.warning("⚠️ Таблица для файлов не создана")
+            files_df = pd.DataFrame()
 
         for doc in ["passport", "snils", "inn"]:
             st.markdown(f"#### {doc.upper()}")
