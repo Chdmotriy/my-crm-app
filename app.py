@@ -117,11 +117,11 @@ def generate_contract_pdf(client_info, payments):
     elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 12))
 # --- ТЕКСТ ДОГОВОРА ИЗ CRM ---
-if tpl and tpl[0].strip():
-    contract_text = render_template(tpl[0], client_info)
-    elements.append(Paragraph(contract_text, normal))
-else:
-    elements.append(Paragraph("Шаблон договора не заполнен", normal))
+    if tpl and tpl[0].strip():
+        contract_text = render_template(tpl[0], client_info)
+        elements.append(Paragraph(contract_text, normal))
+    else:
+        elements.append(Paragraph("Шаблон договора не заполнен", normal))
 
     # --- ПОДПИСИ ---
     elements.append(Spacer(1, 40))
