@@ -35,7 +35,17 @@ try:
 except:
     DB_URL = "postgresql://neondb_owner:npg_ymONePvDcf43@ep-snowy-forest-a4f6efz3-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require"
 engine = sqlalchemy.create_engine(DB_URL)
-
+with engine.begin() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS client_files (
+            id SERIAL PRIMARY KEY,
+            client_id INTEGER,
+            file_name TEXT,
+            file_type TEXT,
+            file_data BYTEA,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
 # --- 3. ГЛАВНЫЕ МЕТРИКИ (ИСПРАВЛЕНО) ---
 st.title("🏦 Интерактивная CRM")
 
