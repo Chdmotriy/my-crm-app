@@ -140,8 +140,6 @@ def generate_contract_pdf(client_info, payments):
         contract_text = "Шаблон договора не заполнен"
 
 
-    elements.append(sign_table)
-
     # --- 🔥 НОВАЯ СТРАНИЦА ---
     elements.append(PageBreak())
 
