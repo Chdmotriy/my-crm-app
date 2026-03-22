@@ -23,6 +23,27 @@ def add_log(client_id, action, details=""):
             INSERT INTO logs (client_id, action, details) 
             VALUES (:cid, :act, :det)
         """), {"cid": client_id, "act": action, "det": details})
+def draw_page(canvas, doc):
+    canvas.saveState()
+
+    # --- ВЕРХНИЙ КОЛОНТИТУЛ ---
+    canvas.setFont("DejaVu", 9)
+    canvas.drawString(40, 800, COMPANY_NAME)
+
+    # --- НИЖНИЙ КОЛОНТИТУЛ (номер страницы) ---
+    page_num = canvas.getPageNumber()
+    canvas.drawRightString(550, 20, f"Стр. {page_num}")
+
+    # --- ВОДЯНОЙ ЗНАК ---
+    canvas.setFont("DejaVu", 40)
+    canvas.setFillGray(0.9)
+    canvas.drawCentredString(300, 400, "ДОГОВОР")
+
+    # --- РАМКА ---
+    canvas.setStrokeColorRGB(0.8, 0.8, 0.8)
+    canvas.rect(30, 30, 535, 780)
+
+    canvas.restoreState()
 def generate_contract_pdf(client_info, payments):
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -178,7 +199,7 @@ def generate_contract_pdf(client_info, payments):
 
     elements.append(table)
 
-    doc.build(elements)
+    doc.build(elements, onFirstPage=draw_page, onLaterPages=draw_page)
 
     pdf = buffer.getvalue()
     buffer.close()
