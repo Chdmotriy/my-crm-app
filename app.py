@@ -45,16 +45,6 @@ def draw_page(canvas, doc):
     canvas.rect(30, 30, 535, 780)
 
     canvas.restoreState()
-        # --- ПОДПИСИ ВНИЗУ ---
-    canvas.setFont("DejaVu", 9)
-    
-    # линии
-    canvas.line(60, 50, 250, 50)
-    canvas.line(330, 50, 520, 50)
-    
-    # подписи
-    canvas.drawString(120, 35, "Исполнитель")
-    canvas.drawString(400, 35, "Заказчик")
 def generate_contract_pdf(client_info, payments):
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -134,16 +124,34 @@ def generate_contract_pdf(client_info, payments):
     elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 12))
 # --- ТЕКСТ ДОГОВОРА ИЗ CRM ---
-    if tpl and tpl[0] and tpl[0].strip():
+    if tpl and tpl[0].strip():
         contract_text = render_template(tpl[0], client_info)
-        
-        # 🔹 ВСТАВЬ ПРОВЕРКУ СЮДА
-        print("TEMPLATE CONTENT:", tpl[0])          # что хранится в базе
-        print("CONTRACT TEXT:", contract_text)      # что получится после подстановки
+    from bs4 import BeautifulSoup
+    
+    soup = BeautifulSoup(contract_text, "html.parser")
+    
+    for el in soup.find_all(["p", "li"]):
+        elements.append(Paragraph(el.text, normal))
     else:
-        contract_text = "Шаблон договора не заполнен"
-        print("No template found")
+        elements.append(Paragraph("Шаблон договора не заполнен", normal))
 
+    # --- ПОДПИСИ ---
+    elements.append(Spacer(1, 40))
+
+    sign_table = Table([
+        ["Исполнитель", "Заказчик"],
+        [
+            f"{COMPANY_NAME}<br/><br/>__________________",
+            f"{client_info[0]}<br/><br/>__________________"
+        ]
+    ], colWidths=[250, 250])
+
+    sign_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+    ]))
+
+    elements.append(sign_table)
 
     # --- 🔥 НОВАЯ СТРАНИЦА ---
     elements.append(PageBreak())
