@@ -540,71 +540,108 @@ elif page == "🔍 Карточка":
 
         # Внутренняя вкладка 3: Финансы и Договор
         with inner_tab3:
-            # --- БЛОК 1: ДОХОДЫ (График платежей от клиента) ---
-            st.subheader("💰 Доходы (График платежей)")
-            with engine.connect() as conn:
-                payments_df = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
-            
-            if not payments_df.empty:
-                for _, row in payments_df.iterrows():
-                    col1, col2, col3, col4 = st.columns([2,2,2,1])
-                    with col1:
-                        new_date = st.date_input("Дата", row["date"], key=f"date_inc_{row['id']}")
-                    with col2:
-                        new_amount = st.number_input("Сумма", value=float(row["amount"]), key=f"am_inc_{row['id']}")
-                    with col3:
-                        new_status = st.selectbox("Статус", ["Ожидается", "ОПЛАЧЕНО"], 
-                                                 index=0 if row["status"] == "Ожидается" else 1, 
-                                                 key=f"st_inc_{row['id']}")
-                    with col4:
-                        if st.button("💾", key=f"btn_inc_{row['id']}"):
-                            with engine.begin() as conn:
-                                conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:id"), 
-                                             {"d": new_date, "a": new_amount, "s": new_status, "id": row["id"]})
-                            st.success("Обновлено")
-                            st.rerun()
-            else:
-                st.info("Доходов по этому клиенту пока нет.")
-            
-            st.divider()
+            st.info("💡 Здесь вы можете редактировать график платежей и расходы. Нажмите «Сохранить все изменения» внизу, чтобы применить правки.")
 
-            # --- БЛОК 2: РАСХОДЫ (Затраты по этому клиенту) ---
-            st.subheader("💸 Расходы по сделке")
+            # --- ИНИЦИАЛИЗАЦИЯ ДАННЫХ ---
             with engine.connect() as conn:
-                expenses_df = pd.read_sql(text("SELECT id, description, date, amount, status FROM expenses WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
-            
-            if not expenses_df.empty:
-                for _, row in expenses_df.iterrows():
-                    ec1, ec2, ec3, ec4, ec5 = st.columns([2,1.5,1.5,1.5,0.7])
-                    with ec1:
-                        st.text_input("Описание", value=row["description"], key=f"exp_desc_{row['id']}", disabled=True)
-                    with ec2:
-                        e_date = st.date_input("Дата", row["date"], key=f"exp_date_{row['id']}")
-                    with ec3:
-                        e_amount = st.number_input("Сумма", value=float(row["amount"]), key=f"exp_am_{row['id']}")
-                    with ec4:
-                        e_status = st.selectbox("Статус", ["Планируется", "ОПЛАЧЕНО"], 
-                                               index=0 if row["status"] == "Планируется" else 1, 
-                                               key=f"exp_st_{row['id']}")
-                    with ec5:
-                        if st.button("💾", key=f"exp_save_{row['id']}"):
-                            with engine.begin() as conn:
-                                conn.execute(text("UPDATE expenses SET date=:d, amount=:a, status=:s WHERE id=:id"), 
-                                             {"d": e_date, "a": e_amount, "s": e_status, "id": row["id"]})
-                            st.success("Сохранено")
-                            st.rerun()
-            else:
-                st.info("Расходы по этому клиенту не зафиксированы.")
+                curr_payments = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
+                curr_expenses = pd.read_sql(text("SELECT id, description, date, amount, status FROM expenses WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
 
+            # Используем форму для единого сохранения
+            with st.form(key=f"fin_form_{c_id}"):
+                
+                # --- СЕКЦИЯ 1: ДОХОДЫ ---
+                st.subheader("💰 Доходы (График платежей)")
+                updated_payments = []
+                
+                if not curr_payments.empty:
+                    for i, row in curr_payments.iterrows():
+                        p_col1, p_col2, p_col3, p_col4 = st.columns([2, 2, 2, 0.5])
+                        with p_col1:
+                            d_val = st.date_input(f"Дата {i+1}", row["date"], key=f"d_inc_{row['id']}")
+                        with p_col2:
+                            a_val = st.number_input(f"Сумма {i+1}", value=float(row["amount"]), key=f"a_inc_{row['id']}")
+                        with p_col3:
+                            s_val = st.selectbox(f"Статус {i+1}", ["Ожидается", "ОПЛАЧЕНО"], 
+                                                index=0 if row["status"] == "Ожидается" else 1, key=f"s_inc_{row['id']}")
+                        with p_col4:
+                            del_p = st.checkbox("🗑️", key=f"del_inc_{row['id']}", help="Удалить этот платеж")
+                        
+                        if not del_p:
+                            updated_payments.append({"id": row["id"], "date": d_val, "amount": a_val, "status": s_val})
+                else:
+                    st.write("Платежей не найдено.")
+
+                st.divider()
+
+                # --- СЕКЦИЯ 2: РАСХОДЫ ---
+                st.subheader("💸 Расходы по сделке")
+                updated_expenses = []
+
+                if not curr_expenses.empty:
+                    for i, row in curr_expenses.iterrows():
+                        e_col1, e_col2, e_col3, e_col4, e_col5 = st.columns([2, 1.5, 1.5, 1.5, 0.5])
+                        with e_col1:
+                            desc_v = st.text_input(f"Описание {i+1}", value=row["description"], key=f"e_desc_{row['id']}")
+                        with e_col2:
+                            ed_v = st.date_input(f"Дата {i+1}", row["date"], key=f"e_date_{row['id']}")
+                        with e_col3:
+                            ea_v = st.number_input(f"Сумма {i+1}", value=float(row["amount"]), key=f"e_am_{row['id']}")
+                        with e_col4:
+                            es_v = st.selectbox(f"Статус {i+1}", ["Планируется", "ОПЛАЧЕНО"], 
+                                               index=0 if row["status"] == "Планируется" else 1, key=f"e_st_{row['id']}")
+                        with e_col5:
+                            del_e = st.checkbox("🗑️", key=f"del_exp_{row['id']}", help="Удалить этот расход")
+                        
+                        if not del_e:
+                            updated_expenses.append({"id": row["id"], "desc": desc_v, "date": ed_v, "amount": ea_v, "status": es_v})
+                
+                # Добавление новой строки расхода (пустая заготовка)
+                st.markdown("**➕ Добавить новый расход**")
+                new_exp_col1, new_exp_col2, new_exp_col3 = st.columns([3, 2, 2])
+                with new_exp_col1:
+                    new_e_desc = st.text_input("Описание нового расхода", key=f"new_e_desc_{c_id}")
+                with new_exp_col2:
+                    new_e_am = st.number_input("Сумма", value=0.0, key=f"new_e_am_{c_id}")
+                with new_exp_col3:
+                    new_e_date = st.date_input("Дата", value=datetime.now(), key=f"new_e_date_{c_id}")
+
+                st.divider()
+
+                # --- КНОПКА СОХРАНЕНИЯ ВСЕГО ---
+                submit_all = st.form_submit_button("💾 СОХРАНИТЬ ВСЕ ИЗМЕНЕНИЯ", use_container_width=True, type="primary")
+
+                if submit_all:
+                    with engine.begin() as conn:
+                        # 1. Обновляем/удаляем Доходы
+                        existing_p_ids = [p["id"] for p in updated_payments]
+                        conn.execute(text("DELETE FROM schedule WHERE client_id = :cid AND id NOT IN :ids"), 
+                                     {"cid": c_id, "ids": tuple(existing_p_ids) if existing_p_ids else (0,)})
+                        for p in updated_payments:
+                            conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:id"), 
+                                         {"d": p["date"], "a": p["amount"], "s": p["status"], "id": p["id"]})
+
+                        # 2. Обновляем/удаляем Расходы
+                        existing_e_ids = [e["id"] for e in updated_expenses]
+                        conn.execute(text("DELETE FROM expenses WHERE client_id = :cid AND id NOT IN :ids"), 
+                                     {"cid": c_id, "ids": tuple(existing_e_ids) if existing_e_ids else (0,)})
+                        for e in updated_expenses:
+                            conn.execute(text("UPDATE expenses SET description=:desc, date=:d, amount=:a, status=:s WHERE id=:id"), 
+                                         {"desc": e["desc"], "d": e["date"], "a": e["amount"], "s": e["status"], "id": e["id"]})
+                        
+                        # 3. Добавляем новый расход, если заполнено описание
+                        if new_e_desc:
+                            conn.execute(text("INSERT INTO expenses (client_id, description, amount, date, status) VALUES (:cid, :desc, :am, :dt, 'Планируется')"),
+                                         {"cid": c_id, "desc": new_e_desc, "am": new_e_am, "dt": new_e_date})
+
+                    st.success("Все финансовые данные обновлены!")
+                    st.rerun()
+
+            # --- СЕКЦИЯ 3: ГЕНЕРАЦИЯ ДОГОВОРА (Вне формы) ---
             st.divider()
-            
-            # --- БЛОК 3: ГЕНЕРАЦИЯ ДОГОВОРА ---
-            st.subheader("📄 Генерация договора")
-            if st.button("Сгенерировать PDF", type="primary", key=f"gen_pdf_btn_{c_id}"):
-                # Берем свежие данные о платежах для PDF
-                with engine.connect() as conn:
-                    current_payments = pd.read_sql(text("SELECT date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
-                pdf_file = generate_contract_pdf(c_info, current_payments)
+            st.subheader("📄 Договор")
+            if st.button("Сгенерировать PDF", key=f"gen_pdf_final_{c_id}"):
+                pdf_file = generate_contract_pdf(c_info, curr_payments)
                 st.download_button("📥 Скачать PDF", data=pdf_file, file_name=f"contract_{c_info[0]}.pdf", mime="application/pdf")
 
     else:
