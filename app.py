@@ -413,8 +413,12 @@ elif page == "📋 Реестр":
         
         # --- БЫСТРЫЙ ПЕРЕХОД ---
         st.markdown("### ⚡ Быстрые действия")
-        selected_client_name = st.selectbox("Выберите клиента из списка выше, чтобы открыть его карточку:", 
-                                            [""] + df["Клиент"].tolist())
+        selected_row = st.dataframe(df, use_container_width=True)
+
+        if selected_row.selection:
+            selected_name = df.iloc[selected_row.selection.rows[0]]["Клиент"]
+            st.session_state.det_sel = selected_name
+            st.switch_page("🔍 Карточка")
         if selected_client_name:
             if st.button(f"📂 Открыть карточку: {selected_client_name}", type="primary"):
                 # Сохраняем выбор в session_state, чтобы "Карточка" знала, кого открыть
