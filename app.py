@@ -359,41 +359,71 @@ elif page == "📋 Реестр":
     df["Остаток долга"] = df["Сумма договора"] - df["Получено"]
     df["Прибыль"] = df["Сумма договора"] - df["Затраты"]
 
-    search = st.text_input("🔍 Быстрый поиск (имя или номер договора)", "").lower()
+    # --- ВЕРХНЯЯ ПАНЕЛЬ ФИЛЬТРОВ ---
+    col_s1, col_s2 = st.columns([2, 1])
+    with col_s1:
+        search = st.text_input("🔍 Поиск клиента или договора", "").lower()
+    with col_s2:
+        filter_mode = st.selectbox("Фильтр по статусу", ["Все", "Только должники", "Только оплаченные"])
+
     if search:
         df = df[df["Клиент"].str.lower().str.contains(search) | df["Договор"].str.lower().str.contains(search, na=False)]
+    
+    if filter_mode == "Только должники":
+        df = df[df["Остаток долга"] > 0]
+    elif filter_mode == "Только оплаченные":
+        df = df[df["Остаток долга"] <= 0]
 
-    t_rec = df[df["Остаток долга"] > 0]["Остаток долга"].sum()
+    # Метрики
+    t_rec = df["Остаток долга"].sum()
     ov_c = int(df["Есть_просрочка"].sum())
 
-    m1, m2 = st.columns(2)
-    m1.metric("Дебиторка (в поиске)", f"{t_rec:,.0f} ₽")
-    m2.metric("Клиентов с просрочкой", f"{ov_c} чел.", delta=f"{ov_c}" if ov_c > 0 else None, delta_color="inverse")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Общая дебиторка", f"{t_rec:,.0f} ₽")
+    m2.metric("С просрочкой", f"{ov_c} чел.", delta=f"{ov_c}" if ov_c > 0 else None, delta_color="inverse")
+    m3.metric("Всего сделок", len(df))
 
     st.divider()
-    
-    v_mode = st.radio("Показать:", ["Активные сделки", "Завершенные (Архив)"], horizontal=True)
-    display_df = df[df["Остаток долга"] > 0].copy() if v_mode == "Активные сделки" else df[df["Остаток долга"] <= 0].copy()
 
-    def style_r(row):
-        return ['background-color: #ffcccc' if (v_mode == "Активные сделки" and row['Есть_просрочка']) else '' for _ in row]
+    # --- ИНТЕРАКТИВНАЯ ТАБЛИЦА С ПОДСВЕТКОЙ ---
+    def style_rows(row):
+        # Если есть просрочка - красный
+        if row['Есть_просрочка']:
+            return ['background-color: #ffebee; color: #b71c1c'] * len(row)
+        # Если всё оплачено - зеленый
+        if row['Остаток долга'] <= 0:
+            return ['background-color: #e8f5e9; color: #1b5e20'] * len(row)
+        return [''] * len(row)
 
-    if not display_df.empty:
+    if not df.empty:
+        # Отображаем стилизованную таблицу
         st.dataframe(
-            display_df.style.apply(style_r, axis=1),
+            df.style.apply(style_rows, axis=1),
             use_container_width=True,
-            height=450,
+            height=400,
             column_config={
                 "id": None, "Есть_просрочка": None,
                 "Сумма договора": st.column_config.NumberColumn(format="%d ₽"),
                 "Получено": st.column_config.NumberColumn(format="%d ₽"),
-                "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
                 "Затраты": st.column_config.NumberColumn(format="%d ₽"),
+                "Остаток долга": st.column_config.NumberColumn(format="%d ₽"),
                 "Прибыль": st.column_config.NumberColumn(format="%d ₽")
             }
         )
+        
+        # --- БЫСТРЫЙ ПЕРЕХОД ---
+        st.markdown("### ⚡ Быстрые действия")
+        selected_client_name = st.selectbox("Выберите клиента из списка выше, чтобы открыть его карточку:", 
+                                            [""] + df["Клиент"].tolist())
+        if selected_client_name:
+            if st.button(f"📂 Открыть карточку: {selected_client_name}", type="primary"):
+                # Сохраняем выбор в session_state, чтобы "Карточка" знала, кого открыть
+                st.session_state.det_sel = selected_client_name
+                # Программно переключаем страницу (к сожалению, radio нельзя изменить напрямую кнопкой, 
+                # но мы подскажем пользователю, что нужно кликнуть на "Карточка")
+                st.info("Клиент выбран! Теперь нажмите на пункт «🔍 Карточка» в боковом меню.")
     else:
-        st.info("Данные отсутствуют или не соответствуют фильтру.")
+        st.info("Данные отсутствуют.")
 
 # --- СТРАНИЦА 4: Карточка (С ВНУТРЕННИМИ ВКЛАДКАМИ) ---
 elif page == "🔍 Карточка":
