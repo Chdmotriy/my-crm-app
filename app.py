@@ -43,7 +43,11 @@ def draw_page(canvas, doc):
     # --- РАМКА ---
     canvas.setStrokeColorRGB(0.8, 0.8, 0.8)
     canvas.rect(30, 30, 535, 780)
-
+    # --- ПОДПИСИ ВНИЗУ ---
+    canvas.setFont("DejaVu", 10)
+    
+    canvas.drawString(40, 60, "Исполнитель: ____________________")
+    canvas.drawRightString(550, 60, "Заказчик: ____________________")
     canvas.restoreState()
 def generate_contract_pdf(client_info, payments):
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
@@ -124,34 +128,18 @@ def generate_contract_pdf(client_info, payments):
     elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 12))
 # --- ТЕКСТ ДОГОВОРА ИЗ CRM ---
-    if tpl and tpl[0].strip():
-        contract_text = render_template(tpl[0], client_info)
     from bs4 import BeautifulSoup
+
+    if tpl and tpl[0] and tpl[0].strip():
+        contract_text = render_template(tpl[0], client_info)
     
-    soup = BeautifulSoup(contract_text, "html.parser")
+        soup = BeautifulSoup(contract_text, "html.parser")
     
-    for el in soup.find_all(["p", "li"]):
-        elements.append(Paragraph(el.text, normal))
+        for el in soup.find_all(["p", "li"]):
+            elements.append(Paragraph(el.text, normal))
     else:
         elements.append(Paragraph("Шаблон договора не заполнен", normal))
 
-    # --- ПОДПИСИ ---
-    elements.append(Spacer(1, 40))
-
-    sign_table = Table([
-        ["Исполнитель", "Заказчик"],
-        [
-            f"{COMPANY_NAME}<br/><br/>__________________",
-            f"{client_info[0]}<br/><br/>__________________"
-        ]
-    ], colWidths=[250, 250])
-
-    sign_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'DejaVu'),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-    ]))
-
-    elements.append(sign_table)
 
     # --- 🔥 НОВАЯ СТРАНИЦА ---
     elements.append(PageBreak())
@@ -558,7 +546,50 @@ with tab_details:
         
         else:
             st.info("📂 Документы пока не загружены")
-
+        st.subheader("💳 График платежей")
+        
+        with engine.connect() as conn:
+            payments_df = pd.read_sql(
+                text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"),
+                conn,
+                params={"id": c_id}
+            )
+        
+        if not payments_df.empty:
+            for _, row in payments_df.iterrows():
+                col1, col2, col3, col4 = st.columns([2,2,2,2])
+        
+                with col1:
+                    new_date = st.date_input("Дата", row["date"], key=f"date_{row['id']}")
+        
+                with col2:
+                    new_amount = st.number_input("Сумма", value=float(row["amount"]), key=f"amount_{row['id']}")
+        
+                with col3:
+                    new_status = st.selectbox(
+                        "Статус",
+                        ["Ожидается", "ОПЛАЧЕНО"],
+                        index=0 if row["status"] == "Ожидается" else 1,
+                        key=f"status_{row['id']}"
+                    )
+        
+                with col4:
+                    if st.button("💾", key=f"save_{row['id']}"):
+                        with engine.begin() as conn:
+                            conn.execute(text("""
+                                UPDATE schedule
+                                SET date=:d, amount=:a, status=:s
+                                WHERE id=:id
+                            """), {
+                                "d": new_date,
+                                "a": new_amount,
+                                "s": new_status,
+                                "id": row["id"]
+                            })
+                        st.success("Обновлено")
+                        st.rerun()
+        else:
+            st.info("Нет платежей")
         st.divider()
 
         # --- ДОГОВОР ---
@@ -613,36 +644,7 @@ with tab_add:
                 if pass_match: st.session_state.ocr_pass = pass_match.group(0)
                 
             st.success("Документ обработан! Проверьте заполненные поля ниже.")
-with tab_contracts:
-    st.subheader("✍️ Редактор договора")
-
-    # Получаем текущий шаблон
-    with engine.connect() as conn:
-        template = conn.execute(
-            text("SELECT content FROM contract_templates LIMIT 1")
-        ).fetchone()
-
-    default_text = template[0] if template else "Введите текст договора..."
-
-    # Поле редактирования
-    new_text = st_quill(
-    value=default_text,
-    html=True
-)
-
-    # Кнопка сохранить
-    if st.button("💾 Сохранить шаблон"):
-        with engine.begin() as conn:
-            conn.execute(text("DELETE FROM contract_templates"))
-            conn.execute(
-                text("INSERT INTO contract_templates (content) VALUES (:c)"),
-                {"c": new_text}
-            )
-
-        st.success("Шаблон сохранён")
-    st.divider()
-
-    with st.form("new_deal"):
+                with st.form("new_deal"):
         col1, col2 = st.columns(2)
         with col1:
             n = st.text_input("ФИО клиента")
@@ -689,3 +691,33 @@ with tab_contracts:
                 st.session_state.ocr_pass = ""
                 st.success(f"Клиент {n} успешно добавлен!")
                 st.rerun()
+with tab_contracts:
+    st.subheader("✍️ Редактор договора")
+
+    # Получаем текущий шаблон
+    with engine.connect() as conn:
+        template = conn.execute(
+            text("SELECT content FROM contract_templates LIMIT 1")
+        ).fetchone()
+
+    default_text = template[0] if template else "Введите текст договора..."
+
+    # Поле редактирования
+    new_text = st_quill(
+    value=default_text,
+    html=True
+)
+
+    # Кнопка сохранить
+    if st.button("💾 Сохранить шаблон"):
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM contract_templates"))
+            conn.execute(
+                text("INSERT INTO contract_templates (content) VALUES (:c)"),
+                {"c": new_text}
+            )
+
+        st.success("Шаблон сохранён")
+    st.divider()
+
+
