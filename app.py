@@ -242,8 +242,8 @@ def generate_contract_pdf(client_info, payments):
     buffer.close()
     return pdf
 
-def render_template(text, client_info):
-    return text \
+def render_template(template_text, client_info):
+    return template_text \
         .replace("{client_name}", client_info[0]) \
         .replace("{passport}", str(client_info[5] or "")) \
         .replace("{address}", str(client_info[8] or "")) \
