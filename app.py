@@ -18,6 +18,16 @@ COMPANY_ADDRESS = "г. Волгоград, ул. Шурухина, д.86/155"
 COMPANY_PHONE = "+79197920717"
 # Для облака Streamlit путь указывать НЕ НУЖНО, 
 # система найдет его сама после добавления packages.txt
+def extract_document_data(text):
+    snils = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text)
+    inn = re.search(r'\b\d{10,12}\b', text)
+    passport = re.search(r'\b\d{2}\s?\d{2}\s?\d{6}\b', text)
+
+    return {
+        "snils": snils.group(0) if snils else None,
+        "inn": inn.group(0) if inn else None,
+        "passport": passport.group(0) if passport else None
+    }
 def add_log(client_id, action, details=""):
     with engine.begin() as conn:
         conn.execute(text("""
@@ -50,6 +60,17 @@ def draw_page(canvas, doc):
     canvas.drawRightString(550, 60, "Заказчик: ____________________")
     canvas.restoreState()
 def generate_contract_pdf(client_info, payments):
+    client = {
+    "name": client_info[0],
+    "phone": client_info[1],
+    "contract_no": client_info[2],
+    "comment": client_info[3],
+    "amount": client_info[4],
+    "passport": client_info[5],
+    "snils": client_info[6],
+    "inn": client_info[7],
+    "address": client_info[8],
+    }
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
@@ -94,10 +115,13 @@ def generate_contract_pdf(client_info, payments):
     contract_no = client_info[2] or f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
 
     # --- ШАПКА ---
-    try:
-        logo = Image("logo.png", width=90, height=45)
-    except:
-        logo = Paragraph("", normal)
+    import os
+
+    if os.path.exists("logo.png"):
+    logo = Image("logo.png", width=90, height=45)
+    else:
+    logo = Paragraph("", normal)
+    print("⚠️ logo.png не найден")
 
     header_text = Paragraph(f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}", right)
 
@@ -117,7 +141,7 @@ def generate_contract_pdf(client_info, payments):
 
     # --- СТОРОНЫ ---
     intro = f"""
-    <b>{client_info[0]}</b>, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу:
+    <b>{client["name"]}</b>, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу:
     {client_info[8] or '—'}, именуемый «Заказчик», с одной стороны, и
     <b>{COMPANY_NAME}</b>, {COMPANY_PASSPORT}, адрес: {COMPANY_ADDRESS},
     именуемый «Исполнитель», с другой стороны, заключили настоящий договор:
@@ -472,9 +496,7 @@ with tab_details:
                     except Exception as e:
                         st.error(f"OCR ошибка: {e}")
 
-                    snils_match = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text_ocr)
-                    inn_match = re.search(r'\b\d{10,12}\b', text_ocr)
-                    pass_match = re.search(r'\b\d{2}\s?\d{2}\s?\d{6}\b', text_ocr)
+                    data = extract_document_data(text_ocr)
 
                     with engine.begin() as conn:
                         if doc_type == "snils" and snils_match:
