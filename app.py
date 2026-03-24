@@ -118,11 +118,11 @@ def generate_contract_pdf(client_info, payments):
     import os
 
     if os.path.exists("logo.png"):
-    logo = Image("logo.png", width=90, height=45)
+        logo = Image("logo.png", width=90, height=45)
     else:
-    logo = Paragraph("", normal)
-    print("⚠️ logo.png не найден")
-
+        logo = Paragraph("", normal)
+        print("⚠️ logo.png не найден")
+    
     header_text = Paragraph(f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}", right)
 
     header_table = Table([[logo, header_text]], colWidths=[150, 300])
