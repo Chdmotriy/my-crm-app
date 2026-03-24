@@ -89,7 +89,32 @@ def generate_contract_pdf(client_info, payments):
     )
 
     styles = getSampleStyleSheet()
+h1 = ParagraphStyle(
+    name='H1',
+    fontName='DejaVu',
+    fontSize=14,
+    leading=18,
+    alignment=1,  # центр
+    spaceAfter=12,
+    spaceBefore=10,
+)
 
+h2 = ParagraphStyle(
+    name='H2',
+    fontName='DejaVu',
+    fontSize=12,
+    leading=16,
+    spaceAfter=10,
+    spaceBefore=8,
+)
+
+bullet = ParagraphStyle(
+    name='Bullet',
+    fontName='DejaVu',
+    fontSize=10,
+    leftIndent=15,
+    spaceAfter=5,
+)
     # --- СТИЛИ ---
     normal = ParagraphStyle(
     name='Normal',
