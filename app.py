@@ -464,7 +464,10 @@ with tab_details:
             if st.button("🤖 Распознать", key=f"ocr_{c_id}"):
                 if uploaded_doc:
                     try:
-                        image = Image.open(uploaded_doc)
+                        if uploaded_doc.type == "application/pdf":
+                            st.error("OCR не поддерживает PDF. Загрузите изображение.")
+                        else:
+                            image = Image.open(uploaded_doc)
                         text_ocr = pytesseract.image_to_string(image, lang='rus+eng')
                     except Exception as e:
                         st.error(f"OCR ошибка: {e}")
