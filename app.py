@@ -124,18 +124,21 @@ def generate_contract_pdf(client_info, payments):
     """
     elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 12))
-# --- ТЕКСТ ДОГОВОРА ИЗ CRM ---
-    from bs4 import BeautifulSoup
 
+    # --- ТЕКСТ ДОГОВОРА ИЗ CRM (ИСПРАВЛЕНО) ---
     if tpl and tpl[0] and tpl[0].strip():
         contract_text = render_template(tpl[0], client_info)
     
-        soup = BeautifulSoup(contract_text, "html.parser")
+        # Поддержка HTML (жирный, переносы и т.д.)
+        contract_text = contract_text.replace("\n", "<br/>")
     
-        for el in soup.find_all(["p", "li"]):
-            elements.append(Paragraph(el.text, normal))
+        try:
+            elements.append(Paragraph(contract_text, normal))
+        except Exception as e:
+            elements.append(Paragraph("Ошибка отображения шаблона", normal))
+            elements.append(Paragraph(str(e), small))
     else:
-        elements.append(Paragraph("Шаблон договора не заполнен", normal))
+        elements.append(Paragraph("⚠️ Шаблон договора не заполнен", normal))
 
 
     # --- 🔥 НОВАЯ СТРАНИЦА ---
