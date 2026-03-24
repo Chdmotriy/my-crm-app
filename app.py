@@ -89,7 +89,7 @@ def generate_contract_pdf(client_info, payments):
     )
 
     styles = getSampleStyleSheet()
-h1 = ParagraphStyle(
+    h1 = ParagraphStyle(
     name='H1',
     fontName='DejaVu',
     fontSize=14,
@@ -99,7 +99,7 @@ h1 = ParagraphStyle(
     spaceBefore=10,
 )
 
-h2 = ParagraphStyle(
+    h2 = ParagraphStyle(
     name='H2',
     fontName='DejaVu',
     fontSize=12,
@@ -108,7 +108,7 @@ h2 = ParagraphStyle(
     spaceBefore=8,
 )
 
-bullet = ParagraphStyle(
+    bullet = ParagraphStyle(
     name='Bullet',
     fontName='DejaVu',
     fontSize=10,
