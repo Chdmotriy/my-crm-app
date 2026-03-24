@@ -89,9 +89,6 @@ def generate_contract_pdf(client_info, payments):
             text("SELECT content FROM contract_templates LIMIT 1")
         ).fetchone()
 
-    if tpl:
-        contract_text = render_template(tpl[0], client_info).replace("\n", "<br/>")
-
     # --- ДАННЫЕ ---
     today = datetime.now().strftime("%d.%m.%Y")
     contract_no = client_info[2] or f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
