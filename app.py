@@ -175,20 +175,40 @@ def generate_contract_pdf(client_info, payments):
     elements.append(Spacer(1, 12))
 
     # --- ТЕКСТ ДОГОВОРА ИЗ CRM (ИСПРАВЛЕНО) ---
+    # --- ТЕКСТ ДОГОВОРА ИЗ CRM (НОВАЯ ЛОГИКА) ---
+    from bs4 import BeautifulSoup
+    
     if tpl and tpl[0] and tpl[0].strip():
-        contract_text = render_template(tpl[0], client_info)
+        contract_html = render_template(tpl[0], client_info)
     
-        # Поддержка HTML (жирный, переносы и т.д.)
-        contract_text = contract_text.replace("\n", "<br/>")
+        soup = BeautifulSoup(contract_html, "html.parser")
     
-        try:
-            elements.append(Paragraph(contract_text, normal))
-        except Exception as e:
-            elements.append(Paragraph("Ошибка отображения шаблона", normal))
-            elements.append(Paragraph(str(e), small))
+        for el in soup.children:
+    
+            if el.name == "h1":
+                elements.append(Paragraph(el.text, h1))
+    
+            elif el.name == "h2":
+                elements.append(Paragraph(el.text, h2))
+    
+            elif el.name == "p":
+                elements.append(Paragraph(el.decode_contents(), normal))
+    
+            elif el.name == "ul":
+                for li in el.find_all("li"):
+                    elements.append(Paragraph(f"• {li.text}", bullet))
+    
+            elif el.name == "br":
+                elements.append(Spacer(1, 8))
+    
+            elif el.name is None:
+                text = str(el).strip()
+                if text:
+                    elements.append(Paragraph(text, normal))
+    
     else:
         elements.append(Paragraph("⚠️ Шаблон договора не заполнен", normal))
-
+    
 
     # --- 🔥 НОВАЯ СТРАНИЦА ---
     elements.append(PageBreak())
