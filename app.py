@@ -243,20 +243,25 @@ c4.metric("Касса (факт)", f"{(p_rev - p_exp):,.0f} ₽")
 
 st.divider()
 
-# --- 4. ВКЛАДКИ ---
-tab_cal, tab_flow, tab_reestr, tab_details, tab_add, tab_contracts = st.tabs([
-    "📅 Календарь",
-    "📈 Аналитика",
-    "📋 Реестр",
-    "🔍 Карточка",
-    "➕ Новая сделка",
-    "📄 Шаблон договора"
-])
+# --- 4. НАВИГАЦИЯ (САЙДБАР) ---
+with st.sidebar:
+    st.divider()
+    page = st.radio(
+        "📌 Главное меню",
+        [
+            "📅 Календарь",
+            "📈 Аналитика",
+            "📋 Реестр",
+            "🔍 Карточка",
+            "➕ Новая сделка",
+            "📄 Шаблон договора"
+        ]
+    )
 
-# Вкладка 1: Интерактивный календарь
-with tab_cal:
+# --- СТРАНИЦА 1: Календарь ---
+if page == "📅 Календарь":
     with engine.connect() as conn:
-        # Тянем только неоплаченные, чтобы не захламлять календарь выполненными задачами
+        # Тянем только неоплаченные
         cal_inc = pd.read_sql("SELECT s.id, c.name, s.date, s.amount FROM schedule s JOIN clients c ON s.client_id = c.id WHERE s.status = 'Ожидается'", conn)
         cal_exp = pd.read_sql("SELECT id, description as name, date, amount FROM expenses WHERE status = 'Планируется'", conn)
     
@@ -278,21 +283,22 @@ with tab_cal:
         st.subheader("⚙️ Быстрое действие")
         st.info(f"Выбрано: **{ev_title}**")
         
-        # Одна кнопка для мгновенного изменения статуса
-        if st.button("✅ Подтвердить оплату (Перевести в ОПЛАЧЕНО)", use_container_width=True, type="primary"):
+        # УЛУЧШЕНИЕ: Добавлена защита от случайного клика
+        confirm = st.checkbox("Подтверждаю получение / списание средств")
+        
+        if st.button("✅ Перевести в ОПЛАЧЕНО", use_container_width=True, type="primary", disabled=not confirm):
             target_table = "schedule" if ev_type == "inc" else "expenses"
-            new_status = "ОПЛАЧЕНО"
             
             with engine.begin() as conn:
                 conn.execute(
-                    text(f"UPDATE {target_table} SET status = :status WHERE id = :id"),
-                    {"status": new_status, "id": int(ev_id)}
+                    text(f"UPDATE {target_table} SET status = 'ОПЛАЧЕНО' WHERE id = :id"),
+                    {"id": int(ev_id)}
                 )
-            st.success(f"Статус обновлен! Теперь в реестре и карточке этот платеж отмечен как оплаченный.")
+            st.success(f"Статус обновлен! Платеж отмечен как оплаченный.")
             st.rerun()
 
-# Вкладка 2: Аналитика и Прогноз
-with tab_flow:
+# --- СТРАНИЦА 2: Аналитика ---
+elif page == "📈 Аналитика":
     with engine.connect() as conn:
         years_df = pd.read_sql("SELECT DISTINCT EXTRACT(YEAR FROM date) as year FROM schedule ORDER BY year DESC", conn)
     
@@ -312,15 +318,11 @@ with tab_flow:
 
     st.divider()
     
-    # --- БЛОК ПРОГНОЗА НА 30 ДНЕЙ ---
     st.subheader("🔮 Прогноз на ближайшие 30 дней")
-    
     with engine.connect() as conn:
-        # Прогноз приходов
         f_rev_res = conn.execute(text("SELECT SUM(amount) FROM schedule WHERE status = 'Ожидается' AND date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'")).scalar()
         forecast_rev = float(f_rev_res) if f_rev_res else 0.0
         
-        # Прогноз расходов
         f_exp_res = conn.execute(text("SELECT SUM(amount) FROM expenses WHERE status = 'Планируется' AND date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'")).scalar()
         forecast_exp = float(f_exp_res) if f_exp_res else 0.0
 
@@ -331,8 +333,9 @@ with tab_flow:
     
     if forecast_rev < forecast_exp:
         st.error("⚠️ Внимание: запланированные расходы превышают ожидаемые приходы в ближайшие 30 дней!")
-# --- ВКЛАДКА 3: РЕЕСТР (С поиском и итогами) ---
-with tab_reestr:
+
+# --- СТРАНИЦА 3: Реестр ---
+elif page == "📋 Реестр":
     with engine.connect() as conn:
         query = text("""
             SELECT c.id, c.name as "Клиент", c.contract_no as "Договор", c.total_amount as "Сумма договора", 
@@ -346,12 +349,10 @@ with tab_reestr:
     df["Остаток долга"] = df["Сумма договора"] - df["Получено"]
     df["Прибыль"] = df["Сумма договора"] - df["Затраты"]
 
-    # Поиск и фильтрация
     search = st.text_input("🔍 Быстрый поиск (имя или номер договора)", "").lower()
     if search:
         df = df[df["Клиент"].str.lower().str.contains(search) | df["Договор"].str.lower().str.contains(search, na=False)]
 
-    # Метрики
     t_rec = df[df["Остаток долга"] > 0]["Остаток долга"].sum()
     ov_c = int(df["Есть_просрочка"].sum())
 
@@ -384,8 +385,8 @@ with tab_reestr:
     else:
         st.info("Данные отсутствуют или не соответствуют фильтру.")
 
-# --- ВКЛАДКА 4: КАРТОЧКА (ПОЛНАЯ ВЕРСИЯ + ДОКУМЕНТЫ) ---
-with tab_details:
+# --- СТРАНИЦА 4: Карточка (С ВНУТРЕННИМИ ВКЛАДКАМИ) ---
+elif page == "🔍 Карточка":
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
     
@@ -399,20 +400,25 @@ with tab_details:
                 FROM clients WHERE id = :id
             """), {"id":c_id}).fetchone()
         
+        # Общие метрики сверху
         c1, c2, c3 = st.columns(3)
         c1.metric("📞 Телефон", c_info[1] if c_info[1] else "—")
         c2.metric("📄 Договор", f"№{c_info[2]}" if c_info[2] else "—")
         c3.metric("💰 Сумма", f"{c_info[4]:,.0f} ₽")
 
-        # --- РЕДАКТИРОВАНИЕ ---
-        with st.expander("📝 Редактировать профиль"):
-            with st.form(f"f_edit_{c_id}"):
+        st.divider()
+        
+        # УЛУЧШЕНИЕ: Внутренние вкладки для компактности!
+        inner_tab1, inner_tab2, inner_tab3 = st.tabs(["📝 Данные клиента", "📎 Документы", "💳 Финансы и Договор"])
 
+        # Внутренняя вкладка 1: Редактирование
+        with inner_tab1:
+            with st.form(f"f_edit_{c_id}"):
                 un = st.text_input("ФИО", value=c_info[0] or "")
                 up = st.text_input("Телефон", value=c_info[1] or "")
                 uc = st.text_input("Номер договора", value=c_info[2] or "")
 
-                st.markdown("### 🪪 Документы")
+                st.markdown("### 🪪 Документы (текст)")
                 upass = st.text_input("Паспорт", value=c_info[5] or "")
                 usnils = st.text_input("СНИЛС", value=c_info[6] or "")
                 uinn = st.text_input("ИНН", value=c_info[7] or "")
@@ -420,7 +426,7 @@ with tab_details:
 
                 ucm = st.text_area("Комментарий", value=c_info[3] or "")
 
-                if st.form_submit_button("Сохранить"):
+                if st.form_submit_button("Сохранить изменения", type="primary"):
                     with engine.begin() as conn:
                         conn.execute(text("""
                             UPDATE clients 
@@ -433,192 +439,113 @@ with tab_details:
                             "inn":uinn, "addr":uaddr,
                             "id":c_id
                         })
-                    st.success("Сохранено")
+                    st.success("Данные успешно сохранены")
                     st.rerun()
 
-        st.divider()
+        # Внутренняя вкладка 2: Файлы и OCR
+        with inner_tab2:
+            st.subheader("📎 Загрузка документов")
 
-        # --- ДОКУМЕНТЫ (НОВОЕ) ---
-        st.subheader("📎 Документы клиента")
-
-        doc_type = st.selectbox(
-            "Тип документа",
-            ["passport", "snils", "inn"],
-            format_func=lambda x: {
-                "passport": "Паспорт",
-                "snils": "СНИЛС",
-                "inn": "ИНН"
-            }[x]
-        )
-
-        uploaded_doc = st.file_uploader(
-            "Загрузить файл",
-            type=["png", "jpg", "jpeg", "pdf"],
-            key=f"upload_{c_id}"
-        )
-
-        col1, col2 = st.columns(2)
-
-        # --- OCR ---
-        with col1:
-            if st.button("🤖 Распознать", key=f"ocr_{c_id}"):
-                if uploaded_doc:
-                    try:
-                        image = Image.open(uploaded_doc)
-                        text_ocr = pytesseract.image_to_string(image, lang='rus+eng')
-                    except Exception as e:
-                        st.error(f"OCR ошибка: {e}")
-
-                    snils_match = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text_ocr)
-                    inn_match = re.search(r'\b\d{10,12}\b', text_ocr)
-                    pass_match = re.search(r'\b\d{2}\s?\d{2}\s?\d{6}\b', text_ocr)
-
-                    with engine.begin() as conn:
-                        if doc_type == "snils" and snils_match:
-                            conn.execute(text("UPDATE clients SET snils=:v WHERE id=:id"),
-                                         {"v": snils_match.group(0), "id": c_id})
-
-                        if doc_type == "inn" and inn_match:
-                            conn.execute(text("UPDATE clients SET inn=:v WHERE id=:id"),
-                                         {"v": inn_match.group(0), "id": c_id})
-
-                        if doc_type == "passport" and pass_match:
-                            conn.execute(text("UPDATE clients SET passport=:v WHERE id=:id"),
-                                         {"v": pass_match.group(0), "id": c_id})
-
-                    st.success("Распознано и сохранено")
-                    st.rerun()
-
-        # --- СОХРАНЕНИЕ ФАЙЛА ---
-        with col2:
-            if st.button("💾 Сохранить файл", key=f"save_file_{c_id}"):
-                if uploaded_doc:
-                    file_bytes = uploaded_doc.read()
-
-                    with engine.begin() as conn:
-                        conn.execute(text("""
-                            INSERT INTO client_files (client_id, filename, file_type, file_data)
-                            VALUES (:cid, :name, :type, :data)
-                        """), {
-                            "cid": c_id,
-                            "name": uploaded_doc.name,
-                            "type": doc_type,
-                            "data": file_bytes
-                        })
-
-                    st.success("Файл сохранён")
-                    st.rerun()
-
-        st.markdown("### 📂 Загруженные документы")
-        
-        with engine.connect() as conn:
-            files_df = pd.read_sql(
-                text("SELECT id, filename, file_type FROM client_files WHERE client_id = :id"),
-                conn,
-                params={"id": c_id}
+            doc_type = st.selectbox(
+                "Тип документа",
+                ["passport", "snils", "inn"],
+                format_func=lambda x: {"passport": "Паспорт", "snils": "СНИЛС", "inn": "ИНН"}[x]
             )
-        
-        # --- БЕЗОПАСНОЕ ОТОБРАЖЕНИЕ ---
-        if not files_df.empty and 'file_type' in files_df.columns:
-        
-            for doc in ["passport", "snils", "inn"]:
-                st.markdown(f"#### {doc.upper()}")
-        
-                doc_files = files_df[files_df['file_type'] == doc]
-        
-                if not doc_files.empty:
-                    for _, f in doc_files.iterrows():
-                        col1, col2 = st.columns([4, 1])
-        
-                        with col1:
-                            st.write(f"📄 {f['filename']}")
-        
-                        with col2:
-                            if st.button("🗑️", key=f"del_{f['id']}"):
-                                with engine.begin() as conn:
-                                    conn.execute(
-                                        text("DELETE FROM client_files WHERE id=:id"),
-                                        {"id": int(f['id'])}
-                                    )
-                                st.rerun()
-                else:
-                    st.caption("Нет файлов")
-        
-        else:
-            st.info("📂 Документы пока не загружены")
-        st.subheader("💳 График платежей")
-        
-        with engine.connect() as conn:
-            payments_df = pd.read_sql(
-                text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"),
-                conn,
-                params={"id": c_id}
-            )
-        
-        if not payments_df.empty:
-            for _, row in payments_df.iterrows():
-                col1, col2, col3, col4 = st.columns([2,2,2,2])
-        
-                with col1:
-                    new_date = st.date_input("Дата", row["date"], key=f"date_{row['id']}")
-        
-                with col2:
-                    new_amount = st.number_input("Сумма", value=float(row["amount"]), key=f"amount_{row['id']}")
-        
-                with col3:
-                    new_status = st.selectbox(
-                        "Статус",
-                        ["Ожидается", "ОПЛАЧЕНО"],
-                        index=0 if row["status"] == "Ожидается" else 1,
-                        key=f"status_{row['id']}"
-                    )
-        
-                with col4:
-                    if st.button("💾", key=f"save_{row['id']}"):
+
+            uploaded_doc = st.file_uploader("Загрузить файл", type=["png", "jpg", "jpeg", "pdf"], key=f"upload_{c_id}")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("🤖 Распознать (OCR)", key=f"ocr_{c_id}"):
+                    if uploaded_doc:
+                        try:
+                            image = Image.open(uploaded_doc)
+                            text_ocr = pytesseract.image_to_string(image, lang='rus+eng')
+                            
+                            snils_match = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text_ocr)
+                            inn_match = re.search(r'\b\d{10,12}\b', text_ocr)
+                            pass_match = re.search(r'\b\d{2}\s?\d{2}\s?\d{6}\b', text_ocr)
+
+                            with engine.begin() as conn:
+                                if doc_type == "snils" and snils_match:
+                                    conn.execute(text("UPDATE clients SET snils=:v WHERE id=:id"), {"v": snils_match.group(0), "id": c_id})
+                                if doc_type == "inn" and inn_match:
+                                    conn.execute(text("UPDATE clients SET inn=:v WHERE id=:id"), {"v": inn_match.group(0), "id": c_id})
+                                if doc_type == "passport" and pass_match:
+                                    conn.execute(text("UPDATE clients SET passport=:v WHERE id=:id"), {"v": pass_match.group(0), "id": c_id})
+                            st.success("Распознано и сохранено в профиль!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Ошибка при чтении: {e}")
+
+            with col2:
+                if st.button("💾 Сохранить файл в базу", key=f"save_file_{c_id}"):
+                    if uploaded_doc:
+                        file_bytes = uploaded_doc.read()
                         with engine.begin() as conn:
-                            conn.execute(text("""
-                                UPDATE schedule
-                                SET date=:d, amount=:a, status=:s
-                                WHERE id=:id
-                            """), {
-                                "d": new_date,
-                                "a": new_amount,
-                                "s": new_status,
-                                "id": row["id"]
-                            })
-                        st.success("Обновлено")
+                            conn.execute(text("INSERT INTO client_files (client_id, filename, file_type, file_data) VALUES (:cid, :name, :type, :data)"),
+                                         {"cid": c_id, "name": uploaded_doc.name, "type": doc_type, "data": file_bytes})
+                        st.success("Файл прикреплен")
                         st.rerun()
-        else:
-            st.info("Нет платежей")
-        st.divider()
 
-        # --- ДОГОВОР ---
-        st.subheader("📄 Договор")
-
-        if st.button("Сгенерировать PDF договор"):
+            st.divider()
+            st.markdown("### 📂 Загруженные файлы")
             with engine.connect() as conn:
-                payments = pd.read_sql(
-                    text("SELECT date, amount FROM schedule WHERE client_id = :id ORDER BY date"),
-                    conn,
-                    params={"id": c_id}
-                )
-        
-            pdf_file = generate_contract_pdf(c_info, payments)
-        
-            st.download_button(
-                label="📥 Скачать PDF",
-                data=pdf_file,
-                file_name=f"contract_{c_info[0]}.pdf",
-                mime="application/pdf"
-            )
+                files_df = pd.read_sql(text("SELECT id, filename, file_type FROM client_files WHERE client_id = :id"), conn, params={"id": c_id})
+            
+            if not files_df.empty and 'file_type' in files_df.columns:
+                for doc in ["passport", "snils", "inn"]:
+                    doc_files = files_df[files_df['file_type'] == doc]
+                    if not doc_files.empty:
+                        st.markdown(f"**{doc.upper()}**")
+                        for _, f in doc_files.iterrows():
+                            fc1, fc2 = st.columns([4, 1])
+                            fc1.write(f"📄 {f['filename']}")
+                            if fc2.button("🗑️", key=f"del_{f['id']}"):
+                                with engine.begin() as conn:
+                                    conn.execute(text("DELETE FROM client_files WHERE id=:id"), {"id": int(f['id'])})
+                                st.rerun()
+            else:
+                st.info("Нет прикрепленных файлов")
+
+        # Внутренняя вкладка 3: Финансы и Договор
+        with inner_tab3:
+            st.subheader("💳 График платежей")
+            with engine.connect() as conn:
+                payments_df = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
+            
+            if not payments_df.empty:
+                for _, row in payments_df.iterrows():
+                    col1, col2, col3, col4 = st.columns([2,2,2,2])
+                    with col1:
+                        new_date = st.date_input("Дата", row["date"], key=f"date_{row['id']}")
+                    with col2:
+                        new_amount = st.number_input("Сумма", value=float(row["amount"]), key=f"amount_{row['id']}")
+                    with col3:
+                        new_status = st.selectbox("Статус", ["Ожидается", "ОПЛАЧЕНО"], index=0 if row["status"] == "Ожидается" else 1, key=f"status_{row['id']}")
+                    with col4:
+                        if st.button("💾", key=f"save_{row['id']}"):
+                            with engine.begin() as conn:
+                                conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:id"), 
+                                             {"d": new_date, "a": new_amount, "s": new_status, "id": row["id"]})
+                            st.success("Сохранено")
+                            st.rerun()
+            else:
+                st.info("Нет платежей")
+            
+            st.divider()
+            st.subheader("📄 Генерация договора")
+            if st.button("Сгенерировать PDF", type="primary"):
+                pdf_file = generate_contract_pdf(c_info, payments_df)
+                st.download_button("📥 Скачать PDF", data=pdf_file, file_name=f"contract_{c_info[0]}.pdf", mime="application/pdf")
 
     else:
-        st.info("Нет клиентов")
-# Вкладка 5: Новая сделка (с доп. полями)
-with tab_add:
+        st.info("База клиентов пуста.")
+
+# --- СТРАНИЦА 5: Новая сделка ---
+elif page == "➕ Новая сделка":
     st.subheader("🤖 Автоматическое распознавание документов")
     
-    # Хранилище временных данных, чтобы поля не сбрасывались
     if 'ocr_inn' not in st.session_state: st.session_state.ocr_inn = ""
     if 'ocr_snils' not in st.session_state: st.session_state.ocr_snils = ""
     if 'ocr_pass' not in st.session_state: st.session_state.ocr_pass = ""
@@ -628,23 +555,21 @@ with tab_add:
         if st.button("✨ Распознать текст", type="primary"):
             with st.spinner('Читаем документ...'):
                 image = Image.open(uploaded_file)
-                # Распознаем текст на русском и английском
                 text = pytesseract.image_to_string(image, lang='rus+eng')
                 
-                # Ищем СНИЛС (формат 123-456-789 12 или слитно)
                 snils_match = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text)
                 if snils_match: st.session_state.ocr_snils = snils_match.group(0)
                 
-                # Ищем ИНН (обычно 10 или 12 цифр)
                 inn_match = re.search(r'\b\d{10,12}\b', text)
                 if inn_match: st.session_state.ocr_inn = inn_match.group(0)
                 
-                # Ищем серию и номер паспорта (4 цифры, пробел, 6 цифр)
                 pass_match = re.search(r'\b\d{2}\s?\d{2}\s?\d{6}\b', text)
                 if pass_match: st.session_state.ocr_pass = pass_match.group(0)
                 
-            st.success("Документ обработан! Проверьте заполненные поля ниже.")
-    with st.form("new_deal"):
+            st.success("Документ обработан! Проверьте поля.")
+            
+    # УЛУЧШЕНИЕ: Добавлен clear_on_submit=True для автоматической очистки полей после добавления
+    with st.form("new_deal", clear_on_submit=True):
         col1, col2 = st.columns(2)
 
         with col1:
@@ -656,7 +581,6 @@ with tab_add:
             c_no = st.text_input("Номер договора")
 
         st.markdown("##### 🪪 Документы")
-
         doc1, doc2 = st.columns(2)
 
         with doc1:
@@ -668,13 +592,12 @@ with tab_add:
             addr = st.text_input("Адрес регистрации")
 
         st.markdown("##### ⚙️ Условия")
-
         tp = st.radio("Тип оплаты", ["Рассрочка", "Сразу"], horizontal=True)
         m = st.number_input("Кол-во платежей (месяцев)", min_value=1, value=1)
         d = st.date_input("Дата первого платежа", datetime.now())
         comm = st.text_area("Комментарий к сделке")
 
-        if st.form_submit_button("Создать сделку"):
+        if st.form_submit_button("Создать сделку", type="primary"):
             if n:
                 with engine.begin() as conn:
                     cid = conn.execute(text("""
@@ -689,51 +612,34 @@ with tab_add:
 
                     steps = 1 if tp == "Сразу" else int(m)
                     amount_per_step = round(t / steps, 2)
-
                     from dateutil.relativedelta import relativedelta
 
                     for i in range(steps):
                         p_date = d + relativedelta(months=i)
-                        conn.execute(text("""
-                            INSERT INTO schedule (client_id, date, amount, status)
-                            VALUES (:cid, :dt, :am, 'Ожидается')
-                        """), {
-                            "cid": cid,
-                            "dt": p_date,
-                            "am": amount_per_step
-                        })
+                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:cid, :dt, :am, 'Ожидается')"), 
+                                     {"cid": cid, "dt": p_date, "am": amount_per_step})
 
+                # Сбрасываем кэш OCR
                 st.session_state.ocr_inn = ""
                 st.session_state.ocr_snils = ""
                 st.session_state.ocr_pass = ""
 
-                st.success(f"Клиент {n} успешно добавлен!")
+                st.success(f"Клиент {n} успешно добавлен! Форма очищена.")
                 st.rerun()
-with tab_contracts:
+
+# --- СТРАНИЦА 6: Шаблон договора ---
+elif page == "📄 Шаблон договора":
     st.subheader("✍️ Редактор договора")
 
-    # Получаем текущий шаблон
     with engine.connect() as conn:
-        template = conn.execute(
-            text("SELECT content FROM contract_templates LIMIT 1")
-        ).fetchone()
+        template = conn.execute(text("SELECT content FROM contract_templates LIMIT 1")).fetchone()
 
     default_text = template[0] if template else "Введите текст договора..."
 
-    # Поле редактирования
-    new_text = st_quill(
-    value=default_text,
-    html=True
-)
+    new_text = st_quill(value=default_text, html=True)
 
-    # Кнопка сохранить
-    if st.button("💾 Сохранить шаблон"):
+    if st.button("💾 Сохранить шаблон", type="primary"):
         with engine.begin() as conn:
             conn.execute(text("DELETE FROM contract_templates"))
-            conn.execute(
-                text("INSERT INTO contract_templates (content) VALUES (:c)"),
-                {"c": new_text}
-            )
-
+            conn.execute(text("INSERT INTO contract_templates (content) VALUES (:c)"), {"c": new_text})
         st.success("Шаблон сохранён")
-    st.divider()
