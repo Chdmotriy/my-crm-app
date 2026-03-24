@@ -254,19 +254,31 @@ c4.metric("Касса (факт)", f"{(p_rev - p_exp):,.0f} ₽")
 st.divider()
 
 # --- 4. НАВИГАЦИЯ (САЙДБАР) ---
+# Список страниц для удобства
+pages_list = [
+    "📅 Календарь", "📈 Аналитика", "📋 Реестр", 
+    "🔍 Карточка", "➕ Новая сделка", "📄 Шаблон договора"
+]
+
+# Инициализируем страницу в памяти, если её там нет
+if 'page' not in st.session_state:
+    st.session_state.page = pages_list[0]
+
 with st.sidebar:
     st.divider()
+    # Функция для смены страницы через код
+    def set_page():
+        st.session_state.page = st.session_state.nav_radio
+
     page = st.radio(
         "📌 Главное меню",
-        [
-            "📅 Календарь",
-            "📈 Аналитика",
-            "📋 Реестр",
-            "🔍 Карточка",
-            "➕ Новая сделка",
-            "📄 Шаблон договора"
-        ]
+        pages_list,
+        key="nav_radio",
+        index=pages_list.index(st.session_state.page),
+        on_change=set_page
     )
+    # Синхронизируем локальную переменную с памятью
+    page = st.session_state.page
 
 # --- СТРАНИЦА 1: Календарь ---
 if page == "📅 Календарь":
@@ -385,22 +397,24 @@ elif page == "📋 Реестр":
 
     st.divider()
 
-    # --- ИНТЕРАКТИВНАЯ ТАБЛИЦА С ПОДСВЕТКОЙ ---
+    # --- ИНТЕРАКТИВНАЯ ТАБЛИЦА ---
     def style_rows(row):
-        # Если есть просрочка - красный
         if row['Есть_просрочка']:
             return ['background-color: #ffebee; color: #b71c1c'] * len(row)
-        # Если всё оплачено - зеленый
         if row['Остаток долга'] <= 0:
             return ['background-color: #e8f5e9; color: #1b5e20'] * len(row)
         return [''] * len(row)
 
     if not df.empty:
-        # Отображаем стилизованную таблицу
-        st.dataframe(
+        st.write("💡 *Кликните на любую строку, чтобы мгновенно открыть карточку клиента*")
+        
+        # Используем selection_mode="single_row" для захвата клика
+        event = st.dataframe(
             df.style.apply(style_rows, axis=1),
             use_container_width=True,
-            height=400,
+            height=500,
+            selection_mode="single_row",
+            on_select="rerun",  # Это заставляет приложение обновиться сразу при клике
             column_config={
                 "id": None, "Есть_просрочка": None,
                 "Сумма договора": st.column_config.NumberColumn(format="%d ₽"),
@@ -411,20 +425,19 @@ elif page == "📋 Реестр":
             }
         )
         
-        # --- БЫСТРЫЙ ПЕРЕХОД ---
-        st.markdown("### ⚡ Быстрые действия")
-        selected_client_name = st.selectbox("Выберите клиента из списка выше, чтобы открыть его карточку:", 
-                                            [""] + df["Клиент"].tolist())
-        if selected_client_name:
-            if st.button(f"📂 Открыть карточку: {selected_client_name}", type="primary"):
-                # Сохраняем выбор в session_state, чтобы "Карточка" знала, кого открыть
-                st.session_state.det_sel = selected_client_name
-                # Программно переключаем страницу (к сожалению, radio нельзя изменить напрямую кнопкой, 
-                # но мы подскажем пользователю, что нужно кликнуть на "Карточка")
-                st.info("Клиент выбран! Теперь нажмите на пункт «🔍 Карточка» в боковом меню.")
+        # ЛОГИКА ПЕРЕХОДА: Если пользователь кликнул на строку
+        if event and event.selection.rows:
+            selected_index = event.selection.rows[0]
+            client_name = df.iloc[selected_index]["Клиент"]
+            
+            # 1. Запоминаем имя клиента для карточки
+            st.session_state.det_sel = client_name
+            # 2. Переключаем страницу в памяти
+            st.session_state.page = "🔍 Карточка"
+            # 3. Перезагружаем, чтобы сразу оказаться в карточке
+            st.rerun()
     else:
         st.info("Данные отсутствуют.")
-
 # --- СТРАНИЦА 4: Карточка (С ВНУТРЕННИМИ ВКЛАДКАМИ) ---
 elif page == "🔍 Карточка":
     with engine.connect() as conn:
