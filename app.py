@@ -12,6 +12,7 @@ import re
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from streamlit_quill import st_quill
+import os
 COMPANY_NAME = "Чадов Дмитрий Вячеславович"
 COMPANY_PASSPORT = "паспорт серия 1808 №248570"
 COMPANY_ADDRESS = "г. Волгоград, ул. Шурухина, д.86/155"
@@ -181,23 +182,32 @@ def render_template(text, client_info):
         .replace("{amount}", f"{client_info[4]:,.0f}")
 # --- 1. НАСТРОЙКИ ---
 st.set_page_config(page_title="CRM Interactive Pro", layout="wide")
-ADMIN_PASSWORD = "D17v01ch89!" # ЗАМЕНИТЕ НА СВОЙ
+
+# Безопасное получение пароля администратора
+try:
+    ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
+except KeyError:
+    st.error("⚠️ Ошибка: Пароль администратора (ADMIN_PASSWORD) не найден в секретах Streamlit.")
+    st.stop()
 
 with st.sidebar:
     st.title("🔐 Доступ")
     user_password = st.text_input("Введите пароль", type="password")
+    
 if user_password != ADMIN_PASSWORD:
     st.info("Введите пароль.")
     st.stop()
 
 # --- 2. БАЗА ---
+# Безопасное получение ссылки на базу данных
 try:
     DB_URL = st.secrets["DB_URL"]
-except:
-    DB_URL = "postgresql://neondb_owner:npg_ymONePvDcf43@ep-snowy-forest-a4f6efz3-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require"
-engine = sqlalchemy.create_engine(DB_URL)
-import os
+except KeyError:
+    st.error("⚠️ Ошибка: Ссылка на базу данных (DB_URL) не найдена в секретах Streamlit.")
+    st.stop()
 
+engine = sqlalchemy.create_engine(DB_URL)
+# --- ПОДКЛЮЧЕНИЕ ШРИФТА С КИРИЛЛИЦЕЙ ---
 font_path = "DejaVuSans.ttf"
 if os.path.exists(font_path):
     pdfmetrics.registerFont(TTFont('DejaVu', font_path))
@@ -530,33 +540,71 @@ elif page == "🔍 Карточка":
 
         # Внутренняя вкладка 3: Финансы и Договор
         with inner_tab3:
-            st.subheader("💳 График платежей")
+            # --- БЛОК 1: ДОХОДЫ (График платежей от клиента) ---
+            st.subheader("💰 Доходы (График платежей)")
             with engine.connect() as conn:
                 payments_df = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
             
             if not payments_df.empty:
                 for _, row in payments_df.iterrows():
-                    col1, col2, col3, col4 = st.columns([2,2,2,2])
+                    col1, col2, col3, col4 = st.columns([2,2,2,1])
                     with col1:
-                        new_date = st.date_input("Дата", row["date"], key=f"date_{row['id']}")
+                        new_date = st.date_input("Дата", row["date"], key=f"date_inc_{row['id']}")
                     with col2:
-                        new_amount = st.number_input("Сумма", value=float(row["amount"]), key=f"amount_{row['id']}")
+                        new_amount = st.number_input("Сумма", value=float(row["amount"]), key=f"am_inc_{row['id']}")
                     with col3:
-                        new_status = st.selectbox("Статус", ["Ожидается", "ОПЛАЧЕНО"], index=0 if row["status"] == "Ожидается" else 1, key=f"status_{row['id']}")
+                        new_status = st.selectbox("Статус", ["Ожидается", "ОПЛАЧЕНО"], 
+                                                 index=0 if row["status"] == "Ожидается" else 1, 
+                                                 key=f"st_inc_{row['id']}")
                     with col4:
-                        if st.button("💾", key=f"save_{row['id']}"):
+                        if st.button("💾", key=f"btn_inc_{row['id']}"):
                             with engine.begin() as conn:
                                 conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:id"), 
                                              {"d": new_date, "a": new_amount, "s": new_status, "id": row["id"]})
+                            st.success("Обновлено")
+                            st.rerun()
+            else:
+                st.info("Доходов по этому клиенту пока нет.")
+            
+            st.divider()
+
+            # --- БЛОК 2: РАСХОДЫ (Затраты по этому клиенту) ---
+            st.subheader("💸 Расходы по сделке")
+            with engine.connect() as conn:
+                expenses_df = pd.read_sql(text("SELECT id, description, date, amount, status FROM expenses WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
+            
+            if not expenses_df.empty:
+                for _, row in expenses_df.iterrows():
+                    ec1, ec2, ec3, ec4, ec5 = st.columns([2,1.5,1.5,1.5,0.7])
+                    with ec1:
+                        st.text_input("Описание", value=row["description"], key=f"exp_desc_{row['id']}", disabled=True)
+                    with ec2:
+                        e_date = st.date_input("Дата", row["date"], key=f"exp_date_{row['id']}")
+                    with ec3:
+                        e_amount = st.number_input("Сумма", value=float(row["amount"]), key=f"exp_am_{row['id']}")
+                    with ec4:
+                        e_status = st.selectbox("Статус", ["Планируется", "ОПЛАЧЕНО"], 
+                                               index=0 if row["status"] == "Планируется" else 1, 
+                                               key=f"exp_st_{row['id']}")
+                    with ec5:
+                        if st.button("💾", key=f"exp_save_{row['id']}"):
+                            with engine.begin() as conn:
+                                conn.execute(text("UPDATE expenses SET date=:d, amount=:a, status=:s WHERE id=:id"), 
+                                             {"d": e_date, "a": e_amount, "s": e_status, "id": row["id"]})
                             st.success("Сохранено")
                             st.rerun()
             else:
-                st.info("Нет платежей")
-            
+                st.info("Расходы по этому клиенту не зафиксированы.")
+
             st.divider()
+            
+            # --- БЛОК 3: ГЕНЕРАЦИЯ ДОГОВОРА ---
             st.subheader("📄 Генерация договора")
-            if st.button("Сгенерировать PDF", type="primary"):
-                pdf_file = generate_contract_pdf(c_info, payments_df)
+            if st.button("Сгенерировать PDF", type="primary", key=f"gen_pdf_btn_{c_id}"):
+                # Берем свежие данные о платежах для PDF
+                with engine.connect() as conn:
+                    current_payments = pd.read_sql(text("SELECT date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
+                pdf_file = generate_contract_pdf(c_info, current_payments)
                 st.download_button("📥 Скачать PDF", data=pdf_file, file_name=f"contract_{c_info[0]}.pdf", mime="application/pdf")
 
     else:
