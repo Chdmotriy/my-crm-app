@@ -644,51 +644,69 @@ with tab_add:
                 if pass_match: st.session_state.ocr_pass = pass_match.group(0)
                 
             st.success("Документ обработан! Проверьте заполненные поля ниже.")
-                with st.form("new_deal"):
+    with st.form("new_deal"):
         col1, col2 = st.columns(2)
+
         with col1:
             n = st.text_input("ФИО клиента")
             p = st.text_input("Телефон")
+
         with col2:
             t = st.number_input("Сумма договора", value=100000.0)
             c_no = st.text_input("Номер договора")
-            
+
         st.markdown("##### 🪪 Документы")
+
         doc1, doc2 = st.columns(2)
+
         with doc1:
-            # Сюда подставляются данные из нейросети, если они нашлись
             passp = st.text_input("Паспортные данные", value=st.session_state.ocr_pass)
             snils_val = st.text_input("СНИЛС", value=st.session_state.ocr_snils)
+
         with doc2:
             inn_val = st.text_input("ИНН", value=st.session_state.ocr_inn)
             addr = st.text_input("Адрес регистрации")
 
         st.markdown("##### ⚙️ Условия")
+
         tp = st.radio("Тип оплаты", ["Рассрочка", "Сразу"], horizontal=True)
         m = st.number_input("Кол-во платежей (месяцев)", min_value=1, value=1)
         d = st.date_input("Дата первого платежа", datetime.now())
         comm = st.text_area("Комментарий к сделке")
-        
+
         if st.form_submit_button("Создать сделку"):
             if n:
                 with engine.begin() as conn:
                     cid = conn.execute(text("""
                         INSERT INTO clients (name, total_amount, months, start_date, phone, contract_no, comment, passport, snils, inn, address) 
                         VALUES (:n, :t, :m, :d, :p, :c_no, :comm, :passp, :snils, :inn, :addr) RETURNING id
-                    """), {"n":n, "t":t, "m":int(m), "d":d, "p":p, "c_no":c_no, "comm":comm, "passp":passp, "snils":snils_val, "inn":inn_val, "addr":addr}).scalar()
-                    
+                    """), {
+                        "n": n, "t": t, "m": int(m), "d": d,
+                        "p": p, "c_no": c_no, "comm": comm,
+                        "passp": passp, "snils": snils_val,
+                        "inn": inn_val, "addr": addr
+                    }).scalar()
+
                     steps = 1 if tp == "Сразу" else int(m)
                     amount_per_step = round(t / steps, 2)
+
+                    from dateutil.relativedelta import relativedelta
+
                     for i in range(steps):
-                        from dateutil.relativedelta import relativedelta
                         p_date = d + relativedelta(months=i)
-                        conn.execute(text("INSERT INTO schedule (client_id, date, amount, status) VALUES (:cid, :dt, :am, 'Ожидается')"),
-                                     {"cid":cid, "dt":p_date, "am":amount_per_step})
-                
-                # Очищаем временную память после сохранения
+                        conn.execute(text("""
+                            INSERT INTO schedule (client_id, date, amount, status)
+                            VALUES (:cid, :dt, :am, 'Ожидается')
+                        """), {
+                            "cid": cid,
+                            "dt": p_date,
+                            "am": amount_per_step
+                        })
+
                 st.session_state.ocr_inn = ""
                 st.session_state.ocr_snils = ""
                 st.session_state.ocr_pass = ""
+
                 st.success(f"Клиент {n} успешно добавлен!")
                 st.rerun()
 with tab_contracts:
