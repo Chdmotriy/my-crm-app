@@ -441,7 +441,27 @@ elif page == "🔍 Карточка":
                         })
                     st.success("Данные успешно сохранены")
                     st.rerun()
-
+# --- НОВАЯ ФУНКЦИЯ: Удаление клиента ---
+            st.divider()
+            with st.expander("⚠️ Опасная зона: Удаление клиента"):
+                st.warning("Внимание! Удаление клиента приведет к безвозвратному удалению всех его данных: графика платежей, загруженных документов и самой карточки.")
+                
+                # Галочка-предохранитель от случайного нажатия
+                confirm_delete = st.checkbox("Я понимаю последствия и хочу удалить этого клиента", key=f"conf_del_{c_id}")
+                
+                if st.button("🗑️ Удалить клиента навсегда", type="primary", disabled=not confirm_delete, use_container_width=True):
+                    with engine.begin() as conn:
+                        # 1. Удаляем связанные файлы
+                        conn.execute(text("DELETE FROM client_files WHERE client_id = :id"), {"id": c_id})
+                        # 2. Удаляем график платежей
+                        conn.execute(text("DELETE FROM schedule WHERE client_id = :id"), {"id": c_id})
+                        # 3. Удаляем логи (если они есть)
+                        conn.execute(text("DELETE FROM logs WHERE client_id = :id"), {"id": c_id})
+                        # 4. Удаляем самого клиента
+                        conn.execute(text("DELETE FROM clients WHERE id = :id"), {"id": c_id})
+                    
+                    st.success("Клиент и все его данные успешно удалены!")
+                    st.rerun()
         # Внутренняя вкладка 2: Файлы и OCR
         with inner_tab2:
             st.subheader("📎 Загрузка документов")
