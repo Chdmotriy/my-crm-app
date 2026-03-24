@@ -18,16 +18,6 @@ COMPANY_ADDRESS = "г. Волгоград, ул. Шурухина, д.86/155"
 COMPANY_PHONE = "+79197920717"
 # Для облака Streamlit путь указывать НЕ НУЖНО, 
 # система найдет его сама после добавления packages.txt
-def extract_document_data(text):
-    snils = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text)
-    inn = re.search(r'\b\d{10,12}\b', text)
-    passport = re.search(r'\b\d{2}\s?\d{2}\s?\d{6}\b', text)
-
-    return {
-        "snils": snils.group(0) if snils else None,
-        "inn": inn.group(0) if inn else None,
-        "passport": passport.group(0) if passport else None
-    }
 def add_log(client_id, action, details=""):
     with engine.begin() as conn:
         conn.execute(text("""
@@ -60,17 +50,6 @@ def draw_page(canvas, doc):
     canvas.drawRightString(550, 60, "Заказчик: ____________________")
     canvas.restoreState()
 def generate_contract_pdf(client_info, payments):
-    client = {
-    "name": client_info[0],
-    "phone": client_info[1],
-    "contract_no": client_info[2],
-    "comment": client_info[3],
-    "amount": client_info[4],
-    "passport": client_info[5],
-    "snils": client_info[6],
-    "inn": client_info[7],
-    "address": client_info[8],
-    }
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
@@ -89,32 +68,7 @@ def generate_contract_pdf(client_info, payments):
     )
 
     styles = getSampleStyleSheet()
-    h1 = ParagraphStyle(
-    name='H1',
-    fontName='DejaVu',
-    fontSize=14,
-    leading=18,
-    alignment=1,  # центр
-    spaceAfter=12,
-    spaceBefore=10,
-)
 
-    h2 = ParagraphStyle(
-    name='H2',
-    fontName='DejaVu',
-    fontSize=12,
-    leading=16,
-    spaceAfter=10,
-    spaceBefore=8,
-)
-
-    bullet = ParagraphStyle(
-    name='Bullet',
-    fontName='DejaVu',
-    fontSize=10,
-    leftIndent=15,
-    spaceAfter=5,
-)
     # --- СТИЛИ ---
     normal = ParagraphStyle(
     name='Normal',
@@ -135,19 +89,19 @@ def generate_contract_pdf(client_info, payments):
             text("SELECT content FROM contract_templates LIMIT 1")
         ).fetchone()
 
+    if tpl:
+        contract_text = render_template(tpl[0], client_info).replace("\n", "<br/>")
+
     # --- ДАННЫЕ ---
     today = datetime.now().strftime("%d.%m.%Y")
     contract_no = client_info[2] or f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
 
     # --- ШАПКА ---
-    import os
-
-    if os.path.exists("logo.png"):
+    try:
         logo = Image("logo.png", width=90, height=45)
-    else:
+    except:
         logo = Paragraph("", normal)
-        print("⚠️ logo.png не найден")
-    
+
     header_text = Paragraph(f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}", right)
 
     header_table = Table([[logo, header_text]], colWidths=[150, 300])
@@ -166,49 +120,26 @@ def generate_contract_pdf(client_info, payments):
 
     # --- СТОРОНЫ ---
     intro = f"""
-    <b>{client["name"]}</b>, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу:
+    <b>{client_info[0]}</b>, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу:
     {client_info[8] or '—'}, именуемый «Заказчик», с одной стороны, и
     <b>{COMPANY_NAME}</b>, {COMPANY_PASSPORT}, адрес: {COMPANY_ADDRESS},
     именуемый «Исполнитель», с другой стороны, заключили настоящий договор:
     """
     elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 12))
-
-    # --- ТЕКСТ ДОГОВОРА ИЗ CRM (ИСПРАВЛЕНО) ---
-    # --- ТЕКСТ ДОГОВОРА ИЗ CRM (НОВАЯ ЛОГИКА) ---
+# --- ТЕКСТ ДОГОВОРА ИЗ CRM ---
     from bs4 import BeautifulSoup
-    
+
     if tpl and tpl[0] and tpl[0].strip():
-        contract_html = render_template(tpl[0], client_info)
+        contract_text = render_template(tpl[0], client_info)
     
-        soup = BeautifulSoup(contract_html, "html.parser")
+        soup = BeautifulSoup(contract_text, "html.parser")
     
-        for el in soup.children:
-    
-            if el.name == "h1":
-                elements.append(Paragraph(el.text, h1))
-    
-            elif el.name == "h2":
-                elements.append(Paragraph(el.text, h2))
-    
-            elif el.name == "p":
-                elements.append(Paragraph(el.decode_contents(), normal))
-    
-            elif el.name == "ul":
-                for li in el.find_all("li"):
-                    elements.append(Paragraph(f"• {li.text}", bullet))
-    
-            elif el.name == "br":
-                elements.append(Spacer(1, 8))
-    
-            elif el.name is None:
-                text = str(el).strip()
-                if text:
-                    elements.append(Paragraph(text, normal))
-    
+        for el in soup.find_all(["p", "li"]):
+            elements.append(Paragraph(el.text, normal))
     else:
-        elements.append(Paragraph("⚠️ Шаблон договора не заполнен", normal))
-    
+        elements.append(Paragraph("Шаблон договора не заполнен", normal))
+
 
     # --- 🔥 НОВАЯ СТРАНИЦА ---
     elements.append(PageBreak())
@@ -242,8 +173,8 @@ def generate_contract_pdf(client_info, payments):
     buffer.close()
     return pdf
 
-def render_template(template_text, client_info):
-    return template_text \
+def render_template(text, client_info):
+    return text \
         .replace("{client_name}", client_info[0]) \
         .replace("{passport}", str(client_info[5] or "")) \
         .replace("{address}", str(client_info[8] or "")) \
@@ -533,15 +464,14 @@ with tab_details:
             if st.button("🤖 Распознать", key=f"ocr_{c_id}"):
                 if uploaded_doc:
                     try:
-                        if uploaded_doc.type == "application/pdf":
-                            st.error("OCR не поддерживает PDF. Загрузите изображение.")
-                        else:
-                            image = Image.open(uploaded_doc)
+                        image = Image.open(uploaded_doc)
                         text_ocr = pytesseract.image_to_string(image, lang='rus+eng')
                     except Exception as e:
                         st.error(f"OCR ошибка: {e}")
 
-                    data = extract_document_data(text_ocr)
+                    snils_match = re.search(r'\d{3}[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{2}', text_ocr)
+                    inn_match = re.search(r'\b\d{10,12}\b', text_ocr)
+                    pass_match = re.search(r'\b\d{2}\s?\d{2}\s?\d{6}\b', text_ocr)
 
                     with engine.begin() as conn:
                         if doc_type == "snils" and snils_match:
@@ -807,5 +737,3 @@ with tab_contracts:
 
         st.success("Шаблон сохранён")
     st.divider()
-
-
