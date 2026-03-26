@@ -254,9 +254,6 @@ c4.metric("Касса (факт)", f"{(p_rev - p_exp):,.0f} ₽")
 st.divider()
 
 # --- 4. НАВИГАЦИЯ (САЙДБАР) ---
-if "main_menu" not in st.session_state:
-    st.session_state.main_menu = "📅 Календарь"
-
 with st.sidebar:
     st.divider()
     page = st.radio(
@@ -268,8 +265,7 @@ with st.sidebar:
             "🔍 Карточка",
             "➕ Новая сделка",
             "📄 Шаблон договора"
-        ],
-        key="main_menu" # Привязываем к состоянию
+        ]
     )
 
 # --- СТРАНИЦА 1: Календарь ---
@@ -400,13 +396,11 @@ elif page == "📋 Реестр":
         return [''] * len(row)
 
     if not df.empty:
-        # Интерактивная таблица с кликабельными строками
-        event = st.dataframe(
+        # Отображаем стилизованную таблицу
+        st.dataframe(
             df.style.apply(style_rows, axis=1),
             use_container_width=True,
             height=400,
-            on_select="rerun", # 🔥 Активируем клик по строке
-            selection_mode="single_row",
             column_config={
                 "id": None, "Есть_просрочка": None,
                 "Сумма договора": st.column_config.NumberColumn(format="%d ₽"),
@@ -417,15 +411,17 @@ elif page == "📋 Реестр":
             }
         )
         
-        # Обработка клика по строке
-        if len(event.selection.rows) > 0:
-            selected_idx = event.selection.rows[0]
-            selected_client_name = df.iloc[selected_idx]["Клиент"]
-            
-            # Записываем клиента в память и переключаем вкладку
-            st.session_state.det_sel = selected_client_name
-            st.session_state.main_menu = "🔍 Карточка"
-            st.rerun()
+        # --- БЫСТРЫЙ ПЕРЕХОД ---
+        st.markdown("### ⚡ Быстрые действия")
+        selected_client_name = st.selectbox("Выберите клиента из списка выше, чтобы открыть его карточку:", 
+                                            [""] + df["Клиент"].tolist())
+        if selected_client_name:
+            if st.button(f"📂 Открыть карточку: {selected_client_name}", type="primary"):
+                # Сохраняем выбор в session_state, чтобы "Карточка" знала, кого открыть
+                st.session_state.det_sel = selected_client_name
+                # Программно переключаем страницу (к сожалению, radio нельзя изменить напрямую кнопкой, 
+                # но мы подскажем пользователю, что нужно кликнуть на "Карточка")
+                st.info("Клиент выбран! Теперь нажмите на пункт «🔍 Карточка» в боковом меню.")
     else:
         st.info("Данные отсутствуют.")
 
@@ -444,26 +440,16 @@ elif page == "🔍 Карточка":
                 FROM clients WHERE id = :id
             """), {"id":c_id}).fetchone()
         
-       # --- 🔥 ШАПКА КЛИЕНТА ---
-        st.markdown(f"## 👤 {c_info[0]}") # Крупное ФИО
-        
-        # Вычисляем статус оплаты на лету для красивого бейджа
-        with engine.connect() as conn:
-            paid_sum = conn.execute(text("SELECT COALESCE(SUM(amount), 0) FROM schedule WHERE client_id = :id AND status = 'ОПЛАЧЕНО'"), {"id": c_id}).scalar()
-        debt = c_info[4] - paid_sum
-
-        c1, c2, c3, c4 = st.columns(4)
+        # Общие метрики сверху
+        c1, c2, c3 = st.columns(3)
         c1.metric("📞 Телефон", c_info[1] if c_info[1] else "—")
         c2.metric("📄 Договор", f"№{c_info[2]}" if c_info[2] else "—")
-        c3.metric("💰 Сумма сделки", f"{c_info[4]:,.0f} ₽")
-        
-        # Цветовой индикатор долга
-        if debt <= 0:
-            c4.metric("Статус", "✅ Оплачено", delta="Долгов нет", delta_color="normal")
-        else:
-            c4.metric("Остаток долга", f"{debt:,.0f} ₽", delta=f"-{debt:,.0f} ₽", delta_color="inverse")
+        c3.metric("💰 Сумма", f"{c_info[4]:,.0f} ₽")
 
         st.divider()
+        
+        # УЛУЧШЕНИЕ: Внутренние вкладки для компактности!
+        inner_tab1, inner_tab2, inner_tab3 = st.tabs(["📝 Данные клиента", "📎 Документы", "💳 Финансы и Договор"])
 
         # Внутренняя вкладка 1: Редактирование
         with inner_tab1:
