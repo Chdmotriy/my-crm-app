@@ -1,4 +1,7 @@
-if page == "📅 Календарь":
+import streamlit as st
+import pandas as pd
+
+def show(engine):
     with engine.connect() as conn:
         # Тянем только неоплаченные
         cal_inc = pd.read_sql("SELECT s.id, c.name, s.date, s.amount FROM schedule s JOIN clients c ON s.client_id = c.id WHERE s.status = 'Ожидается'", conn)
