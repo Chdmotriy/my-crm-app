@@ -51,10 +51,10 @@ def render(engine):
     # 4. Отображение интерактивной таблицы с кликабельными строками
     event = st.dataframe(
         display_df,
-        use_container_width=True, # Если Streamlit ругается на это в терминале, можно поменять на width='stretch'
+        width="stretch",              # 👈 Исправили предупреждение Streamlit
         hide_index=True,
-        selection_mode="single-row",  # 👈 ИСПРАВЛЕНО: дефис вместо подчеркивания!
-        on_select="rerun",
+        selection_mode="single-row",  
+        on_select="rerun",            
         column_config={
             "Сумма": st.column_config.NumberColumn(format="%d ₽"),
             "Дата договора": st.column_config.DateColumn(format="DD.MM.YYYY")
@@ -62,17 +62,13 @@ def render(engine):
     )
 
     # 5. Обработка клика по строке и автоматический переход
-    # Проверяем, кликнул ли пользователь на какую-то строку
     if len(event.selection.rows) > 0:
-        # Получаем номер кликнутой строки
         selected_idx = event.selection.rows[0]
-        
-        # Достаем ФИО клиента из этой строки
         selected_client = display_df.iloc[selected_idx]["ФИО Клиента"]
         
-        # 1. Запоминаем клиента для Карточки
         st.session_state.det_sel = selected_client
-        # 2. Программно переключаем боковое меню на Карточку
-        st.session_state.current_page = "🔍 Карточка"
-        # 3. Мгновенно обновляем экран
+        
+        # 👈 ВМЕСТО ПРЯМОГО ИЗМЕНЕНИЯ МЕНЮ, ОСТАВЛЯЕМ "ЗАПИСКУ" ДЛЯ MAIN.PY
+        st.session_state.change_page_to = "🔍 Карточка" 
+        
         st.rerun()
