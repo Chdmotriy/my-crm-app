@@ -141,13 +141,26 @@ def render(engine):
                 doc_files = files_df[files_df['file_type'] == doc]
                 if not doc_files.empty:
                     st.markdown(f"**{doc.upper()}**")
+                    # 👇 ОБНОВЛЕННЫЙ ВЫВОД ФАЙЛОВ С ПРОСМОТРОМ 👇
                     for _, f in doc_files.iterrows():
-                        fc1, fc2 = st.columns([4, 1])
-                        fc1.write(f"📄 {f['filename']}")
-                        if fc2.button("🗑️", key=f"del_{f['id']}"):
-                            with engine.begin() as conn:
-                                conn.execute(text("DELETE FROM client_files WHERE id=:id"), {"id": int(f['id'])})
-                            st.rerun()
+                        with st.expander(f"📄 {f['filename']}"):
+                            # Достаем сам файл из базы только при открытии спойлера (экономим память)
+                            file_data = conn.execute(
+                                text("SELECT file_data FROM client_files WHERE id=:id"), 
+                                {"id": int(f['id'])}
+                            ).scalar()
+                            
+                            # Показываем картинку
+                            if f['filename'].lower().endswith(('png', 'jpg', 'jpeg')):
+                                st.image(file_data, use_container_width=True)
+                            else:
+                                st.download_button("📥 Скачать PDF", data=file_data, file_name=f['filename'], mime="application/pdf", key=f"dl_{f['id']}")
+                            
+                            # Кнопка удаления
+                            if st.button("🗑️ Удалить этот документ", key=f"del_{f['id']}", type="primary"):
+                                with engine.begin() as conn_del:
+                                    conn_del.execute(text("DELETE FROM client_files WHERE id=:id"), {"id": int(f['id'])})
+                                st.rerun()
         else:
             st.info("Нет прикрепленных файлов")
 
