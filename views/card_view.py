@@ -105,7 +105,6 @@ def render(engine):
             if st.button("🤖 Распознать (OCR)", key=f"ocr_{c_id}"):
                 if uploaded_doc:
                     with st.spinner("Распознаем текст..."):
-                        # ИСПОЛЬЗУЕМ НАШ НОВЫЙ МОДУЛЬ
                         result = process_document_image(uploaded_doc.getvalue())
                         
                         if result["success"]:
@@ -141,22 +140,23 @@ def render(engine):
                 doc_files = files_df[files_df['file_type'] == doc]
                 if not doc_files.empty:
                     st.markdown(f"**{doc.upper()}**")
-                    # 👇 ОБНОВЛЕННЫЙ ВЫВОД ФАЙЛОВ С ПРОСМОТРОМ 👇
+                    
+                    # ОБНОВЛЕННЫЙ БЛОК ВЫВОДА ФАЙЛОВ С ПРОСМОТРОМ
                     for _, f in doc_files.iterrows():
                         with st.expander(f"📄 {f['filename']}"):
-                            # Достаем сам файл из базы только при открытии спойлера (экономим память)
+                            # Достаем сам файл из базы только при открытии спойлера (чтобы не тормозить)
                             file_data = conn.execute(
                                 text("SELECT file_data FROM client_files WHERE id=:id"), 
                                 {"id": int(f['id'])}
                             ).scalar()
                             
-                            # Показываем картинку
+                            # Показываем картинку прямо в приложении
                             if f['filename'].lower().endswith(('png', 'jpg', 'jpeg')):
                                 st.image(file_data, use_container_width=True)
                             else:
                                 st.download_button("📥 Скачать PDF", data=file_data, file_name=f['filename'], mime="application/pdf", key=f"dl_{f['id']}")
                             
-                            # Кнопка удаления
+                            # Кнопка удаления файла
                             if st.button("🗑️ Удалить этот документ", key=f"del_{f['id']}", type="primary"):
                                 with engine.begin() as conn_del:
                                     conn_del.execute(text("DELETE FROM client_files WHERE id=:id"), {"id": int(f['id'])})
@@ -166,11 +166,12 @@ def render(engine):
 
     # --- Вкладка 3: Финансы и Договор ---
     with inner_tab3:
-        st.info("💡 Здесь вы можете редактировать график платежей и расходы.")
+        st.info("💡 Здесь вы можете редактировать график платежей и расходы. Нажмите «Сохранить все изменения» внизу, чтобы применить правки.")
 
         with engine.connect() as conn:
             curr_payments = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
-            curr_expenses = pd.read_sql(text("SELECT id, description, date, amount, status FROM expenses WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
+            # Запрашиваем новую колонку category
+            curr_expenses = pd.read_sql(text("SELECT id, description, category, date, amount, status FROM expenses WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
 
         with st.form(key=f"fin_form_{c_id}"):
             st.subheader("💰 Доходы (График платежей)")
@@ -196,12 +197,19 @@ def render(engine):
             st.divider()
 
             st.subheader("💸 Расходы по сделке")
+            categories_list = ["Налоги", "Реклама", "Офис", "Пошлины", "Прочее"]
+            
             updated_expenses = []
             if not curr_expenses.empty:
                 for i, row in curr_expenses.iterrows():
-                    e_col1, e_col2, e_col3, e_col4, e_col5 = st.columns([2, 1.5, 1.5, 1.5, 0.5])
+                    # Добавлена новая колонка e_col1a для Категории
+                    e_col1, e_col1a, e_col2, e_col3, e_col4, e_col5 = st.columns([2, 1.5, 1.5, 1.5, 1.5, 0.5])
                     with e_col1:
                         desc_v = st.text_input(f"Описание {i+1}", value=row["description"], key=f"e_desc_{row['id']}")
+                    with e_col1a:
+                        # Страхуемся, если в старых данных категория пустая
+                        cat_val = row["category"] if row["category"] in categories_list else "Прочее"
+                        cat_v = st.selectbox(f"Категория {i+1}", categories_list, index=categories_list.index(cat_val), key=f"e_cat_{row['id']}")
                     with e_col2:
                         ed_v = st.date_input(f"Дата {i+1}", row["date"], key=f"e_date_{row['id']}")
                     with e_col3:
@@ -213,12 +221,14 @@ def render(engine):
                         del_e = st.checkbox("🗑️", key=f"del_exp_{row['id']}")
                     
                     if not del_e:
-                        updated_expenses.append({"id": row["id"], "desc": desc_v, "date": ed_v, "amount": ea_v, "status": es_v})
+                        updated_expenses.append({"id": row["id"], "desc": desc_v, "cat": cat_v, "date": ed_v, "amount": ea_v, "status": es_v})
             
             st.markdown("**➕ Добавить новый расход**")
-            new_exp_col1, new_exp_col2, new_exp_col3 = st.columns([3, 2, 2])
+            new_exp_col1, new_exp_col1a, new_exp_col2, new_exp_col3 = st.columns([2, 1.5, 1.5, 1.5])
             with new_exp_col1:
                 new_e_desc = st.text_input("Описание нового расхода", key=f"new_e_desc_{c_id}")
+            with new_exp_col1a:
+                new_e_cat = st.selectbox("Категория", categories_list, index=4, key=f"new_e_cat_{c_id}")
             with new_exp_col2:
                 new_e_am = st.number_input("Сумма", value=0.0, key=f"new_e_am_{c_id}")
             with new_exp_col3:
@@ -236,17 +246,17 @@ def render(engine):
                         conn.execute(text("UPDATE schedule SET date=:d, amount=:a, status=:s WHERE id=:id"), 
                                      {"d": p["date"], "a": p["amount"], "s": p["status"], "id": p["id"]})
 
-                    # Обновляем расходы
+                    # Обновляем расходы (с учетом категории)
                     existing_e_ids = [e["id"] for e in updated_expenses]
                     conn.execute(text("DELETE FROM expenses WHERE client_id = :cid AND id NOT IN :ids"), 
                                  {"cid": c_id, "ids": tuple(existing_e_ids) if existing_e_ids else (0,)})
                     for e in updated_expenses:
-                        conn.execute(text("UPDATE expenses SET description=:desc, date=:d, amount=:a, status=:s WHERE id=:id"), 
-                                     {"desc": e["desc"], "d": e["date"], "a": e["amount"], "s": e["status"], "id": e["id"]})
+                        conn.execute(text("UPDATE expenses SET description=:desc, category=:cat, date=:d, amount=:a, status=:s WHERE id=:id"), 
+                                     {"desc": e["desc"], "cat": e["cat"], "d": e["date"], "a": e["amount"], "s": e["status"], "id": e["id"]})
                     
                     if new_e_desc:
-                        conn.execute(text("INSERT INTO expenses (client_id, description, amount, date, status) VALUES (:cid, :desc, :am, :dt, 'Планируется')"),
-                                     {"cid": c_id, "desc": new_e_desc, "am": new_e_am, "dt": new_e_date})
+                        conn.execute(text("INSERT INTO expenses (client_id, description, category, amount, date, status) VALUES (:cid, :desc, :cat, :am, :dt, 'Планируется')"),
+                                     {"cid": c_id, "desc": new_e_desc, "cat": new_e_cat, "am": new_e_am, "dt": new_e_date})
 
                 st.success("Все финансовые данные обновлены!")
                 st.rerun()
@@ -260,7 +270,6 @@ def render(engine):
                     tpl = conn.execute(text("SELECT content FROM contract_templates LIMIT 1")).fetchone()
                     contract_text = tpl[0] if tpl else ""
                 
-                # ИСПОЛЬЗУЕМ НАШ НОВЫЙ МОДУЛЬ
                 pdf_file = generate_contract_pdf(c_info, curr_payments, contract_text)
                 
                 st.download_button("📥 Скачать PDF", data=pdf_file, file_name=f"contract_{c_info[0]}.pdf", mime="application/pdf")
