@@ -55,7 +55,34 @@ def render(engine):
         st.info(f"📊 Нет финансовых операций (доходов или расходов) за {sel_year} год.")
 
     st.divider()
+# 👇 НОВЫЙ БЛОК: ДИАГРАММА-БУБЛИК 👇
+    st.divider()
+    st.subheader("🍩 Структура расходов")
     
+    with engine.connect() as conn:
+        cat_df = pd.read_sql(text("""
+            SELECT category, SUM(amount) as total 
+            FROM expenses 
+            WHERE EXTRACT(YEAR FROM date) = :y AND status = 'ОПЛАЧЕНО'
+            GROUP BY category
+        """), conn, params={"y": sel_year})
+        
+    if not cat_df.empty:
+        fig_pie = px.pie(
+            cat_df, 
+            values='total', 
+            names='category', 
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Pastel
+        )
+        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+        st.plotly_chart(fig_pie, use_container_width=True)
+    else:
+        st.info("Нет оплаченных расходов за этот период для построения диаграммы.")
+    # 👆 КОНЕЦ НОВОГО БЛОКА 👆
+
+    st.divider()
+    # 4. Прогноз на ближайшие 30 дней (твой текущий код идет дальше)  
     # 4. Прогноз на ближайшие 30 дней (Кассовый разрыв)
     st.subheader("🔮 Прогноз на ближайшие 30 дней")
     
