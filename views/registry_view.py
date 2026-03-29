@@ -51,10 +51,10 @@ def render(engine):
     # 4. Отображение интерактивной таблицы с кликабельными строками
     event = st.dataframe(
         display_df,
-        use_container_width=True,
+        use_container_width=True, # Если Streamlit ругается на это в терминале, можно поменять на width='stretch'
         hide_index=True,
-        selection_mode="single_row",  # 👈 Включаем выбор строки
-        on_select="rerun",            # 👈 Заставляем Streamlit реагировать на клик
+        selection_mode="single-row",  # 👈 ИСПРАВЛЕНО: дефис вместо подчеркивания!
+        on_select="rerun",
         column_config={
             "Сумма": st.column_config.NumberColumn(format="%d ₽"),
             "Дата договора": st.column_config.DateColumn(format="DD.MM.YYYY")
