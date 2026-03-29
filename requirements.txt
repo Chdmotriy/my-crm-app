@@ -11,3 +11,4 @@ Pillow
 reportlab
 streamlit-quill
 beautifulsoup4
+docxtpl==0.16.7
