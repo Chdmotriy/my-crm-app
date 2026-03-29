@@ -2,12 +2,23 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 
 @st.cache_resource
+@st.cache_resource
 def init_db_connection(db_url):
     """
-    Создает и кэширует подключение к базе данных.
-    Кэширование важно, чтобы Streamlit не переподключался при каждом клике.
+    Создает и кэширует подключение к базе данных с защитой от обрывов связи.
     """
-    return create_engine(db_url)
+    connect_args = {}
+    
+    # Если это PostgreSQL, принудительно включаем SSL
+    if db_url.startswith("postgres"):
+        connect_args = {"sslmode": "require"}
+        
+    return create_engine(
+        db_url,
+        pool_pre_ping=True,   # Пингует базу перед каждым запросом (защита от "уснувших" соединений)
+        pool_recycle=300,     # Переподключается каждые 5 минут, чтобы облако не сбросило связь
+        connect_args=connect_args
+    )
 
 def setup_tables(engine):
     """
