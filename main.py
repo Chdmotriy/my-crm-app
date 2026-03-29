@@ -54,17 +54,22 @@ c4.metric("Касса (факт)", f"{(p_rev - p_exp):,.0f} ₽")
 st.divider()
 
 # --- 5. НАВИГАЦИЯ (САЙДБАР) ---
+
+# 👈 ЧИТАЕМ ЗАПИСКУ ИЗ РЕЕСТРА ДО ТОГО, КАК ОТРИСУЕМ МЕНЮ
+if "change_page_to" in st.session_state:
+    st.session_state.current_page = st.session_state.change_page_to
+    del st.session_state.change_page_to # Удаляем записку, чтобы не зациклиться
+
 with st.sidebar:
     st.divider()
     
-    # Инициализируем стартовую страницу в кэше, если ее еще нет
     if "current_page" not in st.session_state:
         st.session_state.current_page = "📅 Календарь"
 
     page = st.radio(
         "📌 Главное меню",
         ["📅 Календарь", "📈 Аналитика", "📋 Реестр", "🔍 Карточка", "➕ Новая сделка", "📄 Шаблон договора"],
-        key="current_page" # 👈 Эта строчка позволяет нам переключать меню кодом!
+        key="current_page"
     )
 
 # --- 6. РОУТИНГ (Запуск выбранной страницы) ---
