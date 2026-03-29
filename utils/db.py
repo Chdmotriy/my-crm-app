@@ -6,13 +6,11 @@ def init_db_connection(db_url):
     """
     Создает и кэширует подключение к БД с максимальной защитой от обрывов связи в облаке.
     """
-    # Важное исправление: современные версии SQLAlchemy требуют 'postgresql://', а не 'postgres://'
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
     connect_args = {}
     
-    # Настройки для удержания SSL-соединения (специально для psycopg2)
     if "postgresql" in db_url:
         connect_args = {
             "sslmode": "require",
@@ -24,9 +22,9 @@ def init_db_connection(db_url):
 
     return create_engine(
         db_url,
-        pool_pre_ping=True,   # Проверка соединения перед каждым запросом
-        pool_recycle=300,     # Переподключение каждые 5 минут
-        pool_timeout=30,      # Таймаут ожидания пула
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_timeout=30,
         max_overflow=5,
         connect_args=connect_args
     )
@@ -36,7 +34,6 @@ def setup_tables(engine):
     Создает все необходимые таблицы при первом запуске.
     """
     with engine.begin() as conn:
-        # Таблица клиентов
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS clients (
                 id SERIAL PRIMARY KEY,
@@ -54,7 +51,6 @@ def setup_tables(engine):
             )
         """))
         
-        # График платежей
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS schedule (
                 id SERIAL PRIMARY KEY,
@@ -65,7 +61,6 @@ def setup_tables(engine):
             )
         """))
         
-        # Расходы
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS expenses (
                 id SERIAL PRIMARY KEY,
@@ -77,7 +72,9 @@ def setup_tables(engine):
             )
         """))
         
-        # Файлы
+        # Защита: если колонка category еще не создалась, создаем ее
+        conn.execute(text("ALTER TABLE expenses ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Прочее'"))
+        
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS client_files (
                 id SERIAL PRIMARY KEY,
@@ -88,7 +85,6 @@ def setup_tables(engine):
             )
         """))
         
-        # Шаблоны договоров
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS contract_templates (
                 id SERIAL PRIMARY KEY,
@@ -96,7 +92,6 @@ def setup_tables(engine):
             )
         """))
         
-        # Логи
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS logs (
                 id SERIAL PRIMARY KEY,
@@ -106,5 +101,28 @@ def setup_tables(engine):
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
-        # Добавляем колонку категорий в расходы (если её там еще нет)
-        conn.execute(text("ALTER TABLE expenses ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Прочее'"))
+
+        # 👇 НОВЫЕ ТАБЛИЦЫ ДЛЯ БАНКРОТСТВА 👇
+        
+        # Таблица кредиторов
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS creditors (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                creditor_name TEXT,
+                contract_info TEXT,
+                debt_amount NUMERIC
+            )
+        """))
+        
+        # Таблица имущества
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS properties (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                property_type TEXT,
+                description TEXT,
+                estimated_value NUMERIC,
+                is_pledged BOOLEAN DEFAULT FALSE
+            )
+        """))
