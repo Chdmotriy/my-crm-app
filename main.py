@@ -133,6 +133,23 @@ with st.sidebar:
         ["📅 Календарь", "📈 Аналитика", "📋 Реестр", "🔍 Карточка", "➕ Новая сделка", "📄 Шаблон договора"],
         key="current_page"
     )
+# 👇 НОВЫЙ БЛОК: УМНЫЕ АЛЕРТЫ 👇
+    st.divider()
+    with engine.connect() as conn:
+        overdue = pd.read_sql("""
+            SELECT c.name, s.amount, s.date 
+            FROM schedule s
+            JOIN clients c ON s.client_id = c.id
+            WHERE s.status = 'Ожидается' AND s.date < CURRENT_DATE
+            ORDER BY s.date ASC
+        """, conn)
+    
+    if not overdue.empty:
+        st.error(f"🔥 Просрочки: {len(overdue)}")
+        for _, row in overdue.iterrows():
+            st.markdown(f"**{row['name']}** \n❌ {row['amount']:,.0f} ₽ (от {row['date'].strftime('%d.%m')})")
+    else:
+        st.success("✅ Нет просроченных платежей")
 
 # --- 6. РОУТИНГ (Запуск выбранной страницы) ---
 if page == "📅 Календарь":
