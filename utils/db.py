@@ -106,3 +106,5 @@ def setup_tables(engine):
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
+        # Добавляем колонку категорий в расходы (если её там еще нет)
+        conn.execute(text("ALTER TABLE expenses ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Прочее'"))
