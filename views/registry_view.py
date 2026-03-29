@@ -35,7 +35,6 @@ def render(engine):
     else:
         display_df = df
 
-    # 4. Отображение красивой таблицы (DataFrame)
     # Переименуем колонки для вывода в интерфейс
     display_df = display_df.rename(columns={
         "id": "ID",
@@ -46,25 +45,34 @@ def render(engine):
         "start_date": "Дата договора"
     })
 
-    st.dataframe(
+    st.markdown("### ⚡ Интерактивная таблица")
+    st.caption("Кликните на любую строку, чтобы мгновенно открыть карточку клиента.")
+
+    # 4. Отображение интерактивной таблицы с кликабельными строками
+    event = st.dataframe(
         display_df,
         use_container_width=True,
         hide_index=True,
+        selection_mode="single_row",  # 👈 Включаем выбор строки
+        on_select="rerun",            # 👈 Заставляем Streamlit реагировать на клик
         column_config={
             "Сумма": st.column_config.NumberColumn(format="%d ₽"),
             "Дата договора": st.column_config.DateColumn(format="DD.MM.YYYY")
         }
     )
 
-    st.divider()
-
-    # 5. Связка Реестра и Карточки клиента
-    st.markdown("### ⚡ Быстрый переход в Карточку")
-    
-    if not display_df.empty:
-        selected_client = st.selectbox("Выберите клиента для подробного просмотра:", display_df["ФИО Клиента"])
+    # 5. Обработка клика по строке и автоматический переход
+    # Проверяем, кликнул ли пользователь на какую-то строку
+    if len(event.selection.rows) > 0:
+        # Получаем номер кликнутой строки
+        selected_idx = event.selection.rows[0]
         
-        if st.button("Перейти к профилю", type="primary"):
-            # Сохраняем выбор пользователя в кэш
-            st.session_state.det_sel = selected_client
-            st.success(f"✅ Клиент **{selected_client}** зафиксирован! Теперь нажмите на пункт **'🔍 Карточка'** в левом боковом меню.")
+        # Достаем ФИО клиента из этой строки
+        selected_client = display_df.iloc[selected_idx]["ФИО Клиента"]
+        
+        # 1. Запоминаем клиента для Карточки
+        st.session_state.det_sel = selected_client
+        # 2. Программно переключаем боковое меню на Карточку
+        st.session_state.current_page = "🔍 Карточка"
+        # 3. Мгновенно обновляем экран
+        st.rerun()
