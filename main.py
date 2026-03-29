@@ -14,6 +14,68 @@ from views import (
 # --- 1. БАЗОВЫЕ НАСТРОЙКИ ---
 st.set_page_config(page_title="CRM Interactive Pro", layout="wide")
 
+# 👇 ДОБАВЛЯЕМ CSS-МАГИЮ СЮДА 👇
+def apply_custom_css():
+    st.markdown("""
+    <style>
+        /* Красивые карточки для метрик (KPI) */
+        [data-testid="stMetric"] {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 15px 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+            border: 1px solid #f0f2f6;
+            transition: transform 0.2s ease;
+        }
+        [data-testid="stMetric"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
+        }
+        
+        /* Плавные и современные главные кнопки (Primary) */
+        button[kind="primary"] {
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            transition: all 0.3s ease;
+        }
+        button[kind="primary"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            border: none;
+        }
+        
+        /* Аккуратные вкладки (Tabs) в карточке клиента */
+        [data-baseweb="tab-list"] {
+            gap: 8px;
+        }
+        [data-baseweb="tab"] {
+            border-radius: 8px 8px 0 0;
+            padding: 10px 16px;
+            background-color: #f8f9fa;
+        }
+        [data-baseweb="tab"][aria-selected="true"] {
+            background-color: #eff6ff;
+            color: #1d4ed8;
+            font-weight: 600;
+            border-bottom: 3px solid #3b82f6;
+        }
+        
+        /* Смягчаем общий фон приложения для контраста карточек */
+        .stApp {
+            background-color: #fcfcfc;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Запускаем наши стили
+apply_custom_css()
+# 👆 КОНЕЦ CSS-МАГИИ 👆
+
+# Дальше идет твой старый код...
+
 try:
     ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
     DB_URL = st.secrets["DB_URL"]
