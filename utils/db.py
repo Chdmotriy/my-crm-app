@@ -2,27 +2,38 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 
 @st.cache_resource
-@st.cache_resource
 def init_db_connection(db_url):
     """
-    Создает и кэширует подключение к базе данных с защитой от обрывов связи.
+    Создает и кэширует подключение к БД с максимальной защитой от обрывов связи в облаке.
     """
+    # Важное исправление: современные версии SQLAlchemy требуют 'postgresql://', а не 'postgres://'
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+
     connect_args = {}
     
-    # Если это PostgreSQL, принудительно включаем SSL
-    if db_url.startswith("postgres"):
-        connect_args = {"sslmode": "require"}
-        
+    # Настройки для удержания SSL-соединения (специально для psycopg2)
+    if "postgresql" in db_url:
+        connect_args = {
+            "sslmode": "require",
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5
+        }
+
     return create_engine(
         db_url,
-        pool_pre_ping=True,   # Пингует базу перед каждым запросом (защита от "уснувших" соединений)
-        pool_recycle=300,     # Переподключается каждые 5 минут, чтобы облако не сбросило связь
+        pool_pre_ping=True,   # Проверка соединения перед каждым запросом
+        pool_recycle=300,     # Переподключение каждые 5 минут
+        pool_timeout=30,      # Таймаут ожидания пула
+        max_overflow=5,
         connect_args=connect_args
     )
 
 def setup_tables(engine):
     """
-    Проверяет наличие нужных таблиц в базе и создает их, если они отсутствуют.
+    Создает все необходимые таблицы при первом запуске.
     """
     with engine.begin() as conn:
         # Таблица клиентов
@@ -43,7 +54,7 @@ def setup_tables(engine):
             )
         """))
         
-        # График платежей (доходы)
+        # График платежей
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS schedule (
                 id SERIAL PRIMARY KEY,
