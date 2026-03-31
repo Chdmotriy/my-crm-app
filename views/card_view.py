@@ -128,7 +128,42 @@ def render(engine):
                                 with engine.begin() as conn_del: conn_del.execute(text("DELETE FROM client_files WHERE id=:id"), {"id": int(f['id'])})
                                 st.rerun()
         else: st.info("Нет файлов")
-
+# 👇 ДОБАВЛЯЕМ БЛОК ГЕНЕРАЦИИ WORD-ДОКУМЕНТОВ 👇
+        st.divider()
+        st.subheader("🖨️ Генерация документов (Банкротство)")
+        st.info("💡 Убедитесь, что в папке `templates/` в корне проекта лежат файлы шаблонов (zayavlenie.docx, kreditory.docx, opis.docx).")
+        
+        # Импортируем наш новый генератор (лучше добавить этот импорт в самый верх файла card_view.py)
+        from utils.word_generator import get_client_context, generate_word_document
+        
+        col_w1, col_w2, col_w3 = st.columns(3)
+        
+        # Подготавливаем данные один раз, чтобы не дергать базу трижды
+        context = get_client_context(engine, c_id)
+        
+        with col_w1:
+            if st.button("📄 Заявление", use_container_width=True):
+                doc_bytes = generate_word_document("templates/zayavlenie.docx", context)
+                if doc_bytes:
+                    st.download_button("📥 Скачать Заявление", data=doc_bytes, file_name=f"Заявление_{c_info[0]}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                else:
+                    st.error("Шаблон templates/zayavlenie.docx не найден!")
+                    
+        with col_w2:
+            if st.button("🏦 Список кредиторов", use_container_width=True):
+                doc_bytes = generate_word_document("templates/kreditory.docx", context)
+                if doc_bytes:
+                    st.download_button("📥 Скачать Кредиторов", data=doc_bytes, file_name=f"Кредиторы_{c_info[0]}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                else:
+                    st.error("Шаблон templates/kreditory.docx не найден!")
+                    
+        with col_w3:
+            if st.button("🏠 Опись имущества", use_container_width=True):
+                doc_bytes = generate_word_document("templates/opis.docx", context)
+                if doc_bytes:
+                    st.download_button("📥 Скачать Опись", data=doc_bytes, file_name=f"Опись_{c_info[0]}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                else:
+                    st.error("Шаблон templates/opis.docx не найден!")
     # --- Вкладка 3: Финансы ---
     with tab_fin:
         with engine.connect() as conn:
