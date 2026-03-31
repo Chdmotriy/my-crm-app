@@ -5,6 +5,7 @@ from datetime import datetime
 
 from utils.ocr_engine import process_document_image
 from utils.pdf_generator import generate_contract_pdf
+from utils.word_generator import get_client_context, generate_word_document
 
 def render(engine):
     st.subheader("🔍 Карточка клиента")
