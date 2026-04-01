@@ -13,79 +13,89 @@ def get_client_context(engine, client_id):
         creditors_df = pd.read_sql(text("SELECT * FROM creditors WHERE client_id = :id"), conn, params={"id": client_id})
         props_df = pd.read_sql(text("SELECT * FROM properties WHERE client_id = :id"), conn, params={"id": client_id})
         
-        # Получаем данные уполномоченного органа, если он выбран
-        auth_body_name = ""
-        auth_body_address = ""
+        auth_body_name, auth_body_address = "", ""
         if client.get('auth_body_id'):
             ab_row = conn.execute(text("SELECT name, address FROM authorized_bodies WHERE id = :id"), {"id": client.get('auth_body_id')}).fetchone()
             if ab_row:
-                auth_body_name = ab_row[0]
-                auth_body_address = ab_row[1]
-        
-        total_debt = creditors_df['debt_amount'].sum() if not creditors_df.empty else 0
+                auth_body_name, auth_body_address = ab_row[0], ab_row[1]
 
-        # Собираем умный полный адрес (игнорируя пустые поля)
+        # 1. Формируем умный полный адрес
         address_components = [
-            client.get('addr_zip'),
-            client.get('addr_region'),
-            client.get('addr_district'),
-            client.get('addr_city'),
-            client.get('addr_settlement'),
-            client.get('addr_street'),
-            client.get('addr_house'),
-            client.get('addr_corpus'),
-            client.get('addr_flat')
+            client.get('addr_zip'), client.get('addr_region'), client.get('addr_district'),
+            client.get('addr_city'), client.get('addr_settlement'), client.get('addr_street'),
+            client.get('addr_house'), client.get('addr_corpus'), client.get('addr_flat')
         ]
-        valid_parts = [str(part).strip() for part in address_components if part and str(part).strip()]
-        full_address_string = ", ".join(valid_parts)
+        full_address_string = ", ".join([str(p).strip() for p in address_components if p and str(p).strip()])
 
-        # Возвращаем словарь со всеми тегами для Word-шаблонов
+        # 2. Формируем списки кредиторов для Word (Шапка и Тело)
+        creditors_header_lines = []
+        creditors_body_lines = []
+        total_debt = 0
+
+        for idx, row in enumerate(creditors_df.to_dict('records'), 1):
+            c_name = row.get('creditor_name') or ""
+            c_addr = row.get('creditor_address') or ""
+            c_total = row.get('debt_amount') or 0
+            c_contracts = row.get('contracts_info') or ""
+            
+            total_debt += c_total
+            c_total_str = f"{c_total:,.2f}".replace(',', ' ')
+            
+            # Строка для шапки (Кредитор 1: ПАО Сбербанк, г. Москва...)
+            header_str = f"Кредитор {idx}: {c_name}, {c_addr}"
+            creditors_header_lines.append(header_str)
+            
+            # Оформляем список договоров через запятую с переносом строки, если их несколько
+            contracts_formatted = ",\n".join([line.strip() for line in c_contracts.split('\n') if line.strip()])
+            
+            # Строка для тела заявления
+            body_str = f"Требований Кредитора {idx} ({c_name}) в размере {c_total_str} рублей, которые в свою очередь вытекают из следующих заключенных договоров:\n{contracts_formatted}"
+            creditors_body_lines.append(body_str)
+
+        # Склеиваем всё в два готовых текста
+        final_creditors_header = "\n".join(creditors_header_lines)
+        final_creditors_body = "\n\n".join(creditors_body_lines)
+
         return {
             "client_name": client.get('name') or "",
-            "phone": client.get('phone') or "",
-            
-            # Разделенное ФИО
             "last_name": client.get('last_name') or "",
             "first_name": client.get('first_name') or "",
             "patronymic": client.get('patronymic') or "",
+            "phone": client.get('phone') or "",
             
-            # Разделенный паспорт
             "passport_series": client.get('passport_series') or client.get('passport') or "",
             "passport_issued_by": client.get('passport_issued_by') or "",
             "snils": client.get('snils') or "",
             "inn": client.get('inn') or "",
             
-            # Данные для банкротства
             "birth_date": client.get('birth_date').strftime('%d.%m.%Y') if client.get('birth_date') else "",
             "birth_place": client.get('birth_place') or "",
             "court_name": client.get('court_name') or "",
             "sro_name": client.get('sro_name') or "",
+            "marital_status": client.get('marital_status') or "",
+            "dependents": client.get('dependents') or 0,
             
-            # Супруг(а)
             "spouse_name": client.get('spouse_name') or "",
             "spouse_address": client.get('spouse_address') or "",
             
-            # Уполномоченный орган
             "auth_body_name": auth_body_name,
             "auth_body_address": auth_body_address,
             
-            # Адрес
             "full_address": full_address_string,
             
-            # Списки и суммы
+            # ⭐️ НОВЫЕ ТЕГИ ДЛЯ КРЕДИТОРОВ
             "total_debt": f"{total_debt:,.2f}".replace(',', ' '),
-            "creditors": creditors_df.to_dict(orient='records'),
-            "properties": props_df.to_dict(orient='records')
+            "creditors_header_text": final_creditors_header,
+            "creditors_body_text": final_creditors_body,
+            
+            "properties": props_df.to_dict('records')
         }
 
 def generate_word_document(template_path, context):
-    """Берет шаблон .docx, подставляет контекст и возвращает готовый файл в байтах."""
     if not os.path.exists(template_path):
         return None
-        
     doc = DocxTemplate(template_path)
     doc.render(context)
-    
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
