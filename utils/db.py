@@ -23,14 +23,14 @@ def setup_tables(engine):
         conn.execute(text("CREATE TABLE IF NOT EXISTS creditors (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, creditor_name TEXT, contract_info TEXT, debt_amount NUMERIC)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS properties (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, property_type TEXT, description TEXT, estimated_value NUMERIC, is_pledged BOOLEAN DEFAULT FALSE)"))
         
-        # 👇 НОВЫЕ ДЕТАЛИЗИРОВАННЫЕ ПОЛЯ ДЛЯ КЛИЕНТА 👇
+        # НОВЫЕ ДЕТАЛИЗИРОВАННЫЕ ПОЛЯ ДЛЯ КЛИЕНТА (+ Индекс)
         new_columns = {
             "last_name": "TEXT", "first_name": "TEXT", "patronymic": "TEXT",
             "passport_series": "TEXT", "passport_issued_by": "TEXT",
             "birth_date": "DATE", "birth_place": "TEXT",
-            "addr_region": "TEXT", "addr_district": "TEXT", "addr_city": "TEXT",
-            "addr_settlement": "TEXT", "addr_street": "TEXT", "addr_house": "TEXT",
-            "addr_corpus": "TEXT", "addr_flat": "TEXT",
+            "addr_zip": "TEXT", "addr_region": "TEXT", "addr_district": "TEXT", 
+            "addr_city": "TEXT", "addr_settlement": "TEXT", "addr_street": "TEXT", 
+            "addr_house": "TEXT", "addr_corpus": "TEXT", "addr_flat": "TEXT",
             "court_name": "TEXT", "marital_status": "TEXT", 
             "dependents": "INTEGER DEFAULT 0", "sro_name": "TEXT"
         }
