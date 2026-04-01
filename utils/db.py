@@ -12,7 +12,6 @@ def init_db_connection(db_url):
 
 def setup_tables(engine):
     with engine.begin() as conn:
-        # Основные таблицы
         conn.execute(text("CREATE TABLE IF NOT EXISTS clients (id SERIAL PRIMARY KEY, name TEXT, phone TEXT, contract_no TEXT, comment TEXT, total_amount NUMERIC, months INTEGER, start_date DATE, passport TEXT, snils TEXT, inn TEXT, address TEXT)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS schedule (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, date DATE, amount NUMERIC, status TEXT)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS expenses (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, description TEXT, date DATE, amount NUMERIC, status TEXT)"))
@@ -20,13 +19,20 @@ def setup_tables(engine):
         conn.execute(text("CREATE TABLE IF NOT EXISTS client_files (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, filename TEXT, file_type TEXT, file_data BYTEA)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS contract_templates (id SERIAL PRIMARY KEY, content TEXT)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS logs (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, action TEXT, details TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"))
-        conn.execute(text("CREATE TABLE IF NOT EXISTS creditors (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, creditor_name TEXT, contract_info TEXT, debt_amount NUMERIC)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS properties (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, property_type TEXT, description TEXT, estimated_value NUMERIC, is_pledged BOOLEAN DEFAULT FALSE)"))
         
-        # 👇 НОВАЯ ТАБЛИЦА: Уполномоченные органы 👇
+        # Уполномоченные органы и Каталог кредиторов
         conn.execute(text("CREATE TABLE IF NOT EXISTS authorized_bodies (id SERIAL PRIMARY KEY, name TEXT, address TEXT)"))
+        conn.execute(text("CREATE TABLE IF NOT EXISTS creditor_catalog (id SERIAL PRIMARY KEY, name TEXT, address TEXT)"))
 
-        # НОВЫЕ ПОЛЯ ДЛЯ КЛИЕНТА (+ Супруги и Уполномоченный орган)
+        # Обновляем таблицу привязанных кредиторов
+        conn.execute(text("CREATE TABLE IF NOT EXISTS creditors (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, creditor_name TEXT, contract_info TEXT, debt_amount NUMERIC)"))
+        conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS creditor_address TEXT"))
+        conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS principal_debt NUMERIC DEFAULT 0"))
+        conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS penalty_debt NUMERIC DEFAULT 0"))
+        conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS contracts_info TEXT"))
+
+        # Обновляем клиента
         new_columns = {
             "last_name": "TEXT", "first_name": "TEXT", "patronymic": "TEXT",
             "passport_series": "TEXT", "passport_issued_by": "TEXT",
