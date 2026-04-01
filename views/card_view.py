@@ -25,6 +25,10 @@ def render(engine):
     with engine.connect() as conn:
         c_info_row = conn.execute(text("SELECT * FROM clients WHERE id = :id"), {"id": c_id}).fetchone()
         c_info = c_info_row._mapping if c_info_row else {}
+        
+        # Получаем список уполномоченных органов для умного селекта
+        auth_bodies_df = pd.read_sql("SELECT id, name, address FROM authorized_bodies ORDER BY name", conn)
+        auth_bodies_list = auth_bodies_df.to_dict('records')
     
     c1, c2, c3 = st.columns(3)
     c1.metric("📞 Телефон", c_info.get('phone') or "—")
@@ -57,15 +61,17 @@ def render(engine):
                 uinn = st.text_input("ИНН", value=c_info.get('inn') or "")
             
             with col2:
-                st.markdown("### 🏛 Данные для банкротства")
-                ubirthd = st.date_input("Дата рождения", value=c_info.get('birth_date') if c_info.get('birth_date') else date(1980, 1, 1))
-                ubirthp = st.text_input("Место рождения", value=c_info.get('birth_place') or "")
-                ucourt = st.text_input("Арбитражный суд", value=c_info.get('court_name') or "", help="Например: Арбитражный суд г. Москвы")
-                usro = st.text_input("Название СРО", value=c_info.get('sro_name') or "")
+                st.markdown("### 💍 Сведения о супруге")
+                uspouse_name = st.text_input("ФИО супруга(и) / бывшего", value=c_info.get('spouse_name') or "", help="Укажите ФИО полностью")
+                uspouse_addr = st.text_input("Адрес супруга(и)", value=c_info.get('spouse_address') or "")
+                
+                ms_list = ["Холост / Не замужем", "В браке", "В разводе", "Вдовец / Вдова"]
+                ms_index = ms_list.index(c_info.get('marital_status')) if c_info.get('marital_status') in ms_list else 0
+                umarital = st.selectbox("Семейное положение", ms_list, index=ms_index)
+                udep = st.number_input("Иждивенцы (дети)", min_value=0, value=c_info.get('dependents') if c_info.get('dependents') else 0)
 
             st.divider()
             st.markdown("### 📍 Адрес регистрации")
-            # 3 ряда по 3 колонки для красивого выравнивания
             a_col1, a_col2, a_col3 = st.columns(3)
             azip = a_col1.text_input("Почтовый индекс", value=c_info.get('addr_zip') or "")
             areg = a_col2.text_input("Регион", value=c_info.get('addr_region') or "")
@@ -81,11 +87,58 @@ def render(engine):
             acorp = a_col8.text_input("Корпус", value=c_info.get('addr_corpus') or "")
             aflat = a_col9.text_input("Квартира", value=c_info.get('addr_flat') or "")
 
+            st.divider()
+            st.markdown("### 🏛 Данные для банкротства")
+            b_col1, b_col2 = st.columns(2)
+            ubirthd = b_col1.date_input("Дата рождения", value=c_info.get('birth_date') if c_info.get('birth_date') else date(1980, 1, 1))
+            ubirthp = b_col2.text_input("Место рождения", value=c_info.get('birth_place') or "")
+            ucourt = b_col1.text_input("Арбитражный суд", value=c_info.get('court_name') or "", help="Например: Арбитражный суд г. Москвы")
+            usro = b_col2.text_input("Название СРО", value=c_info.get('sro_name') or "")
+
+            # Умный селект для Уполномоченного органа
+            st.markdown("#### 🏢 Уполномоченный орган")
+            ab_options = ["Не выбран"] + [ab['name'] for ab in auth_bodies_list] + ["➕ Добавить новый..."]
+            
+            current_ab_id = c_info.get('auth_body_id')
+            current_ab_name = "Не выбран"
+            if current_ab_id:
+                for ab in auth_bodies_list:
+                    if ab['id'] == current_ab_id:
+                        current_ab_name = ab['name']
+                        break
+            
+            ab_index = ab_options.index(current_ab_name) if current_ab_name in ab_options else 0
+            sel_ab = st.selectbox("Выберите из списка или добавьте новый", ab_options, index=ab_index)
+            
+            new_ab_name = ""
+            new_ab_addr = ""
+            if sel_ab == "➕ Добавить новый...":
+                st.info("Укажите данные нового органа. После сохранения он появится в общем списке для всех клиентов.")
+                new_ab_name = st.text_input("Наименование нового органа (ИФНС, Опека и т.д.)")
+                new_ab_addr = st.text_input("Адрес нового органа")
+
             ucm = st.text_area("Комментарий", value=c_info.get('comment') or "")
 
             if st.form_submit_button("Сохранить изменения", type="primary"):
                 full_name = f"{ulast} {ufirst} {upat}".strip()
+                
                 with engine.begin() as conn:
+                    # 1. Обработка Уполномоченного органа
+                    final_ab_id = current_ab_id
+                    if sel_ab == "➕ Добавить новый..." and new_ab_name:
+                        # Сохраняем новый орган и получаем его ID
+                        res = conn.execute(text("INSERT INTO authorized_bodies (name, address) VALUES (:n, :a) RETURNING id"), 
+                                           {"n": new_ab_name, "a": new_ab_addr}).fetchone()
+                        final_ab_id = res[0]
+                    elif sel_ab != "Не выбран" and sel_ab != "➕ Добавить новый...":
+                        for ab in auth_bodies_list:
+                            if ab['name'] == sel_ab:
+                                final_ab_id = ab['id']
+                                break
+                    elif sel_ab == "Не выбран":
+                        final_ab_id = None
+
+                    # 2. Сохранение всех данных клиента
                     conn.execute(text("""
                         UPDATE clients 
                         SET name=:n, last_name=:ln, first_name=:fn, patronymic=:pat,
@@ -93,6 +146,8 @@ def render(engine):
                             passport_series=:pass, passport_issued_by=:pass_issued, 
                             snils=:snils, inn=:inn,
                             birth_date=:bd, birth_place=:bp, court_name=:court, sro_name=:sro,
+                            marital_status=:ms, dependents=:dep, spouse_name=:sname, spouse_address=:saddr,
+                            auth_body_id=:ab_id,
                             addr_zip=:azip, addr_region=:areg, addr_district=:adist, addr_city=:acity, addr_settlement=:aset,
                             addr_street=:astr, addr_house=:ahouse, addr_corpus=:acorp, addr_flat=:aflat
                         WHERE id=:id
@@ -100,7 +155,8 @@ def render(engine):
                         "n": full_name, "ln": ulast, "fn": ufirst, "pat": upat,
                         "p": up, "c": uc, "cm": ucm, "pass": upass, "pass_issued": upass_issued, 
                         "snils": usnils, "inn": uinn, "bd": ubirthd, "bp": ubirthp, 
-                        "court": ucourt, "sro": usro,
+                        "court": ucourt, "sro": usro, "ms": umarital, "dep": udep, 
+                        "sname": uspouse_name, "saddr": uspouse_addr, "ab_id": final_ab_id,
                         "azip": azip, "areg": areg, "adist": adist, "acity": acity, "aset": aset,
                         "astr": astr, "ahouse": ahouse, "acorp": acorp, "aflat": aflat,
                         "id": c_id
