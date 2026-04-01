@@ -5,39 +5,59 @@ from sqlalchemy import text
 from docxtpl import DocxTemplate
 
 def get_client_context(engine, client_id):
-    """Собирает все данные клиента из разных таблиц в один словарь для шаблона."""
+    """Собирает все данные клиента из разных таблиц в один словарь для шаблона Word."""
     with engine.connect() as conn:
-        # Данные клиента
-        client = conn.execute(text("SELECT * FROM clients WHERE id = :id"), {"id": client_id}).fetchone()
+        client_row = conn.execute(text("SELECT * FROM clients WHERE id = :id"), {"id": client_id}).fetchone()
+        client = client_row._mapping if client_row else {}
         
-        # Список кредиторов
         creditors_df = pd.read_sql(text("SELECT * FROM creditors WHERE client_id = :id"), conn, params={"id": client_id})
-        creditors = creditors_df.to_dict(orient='records')
-        
-        # Список имущества
         props_df = pd.read_sql(text("SELECT * FROM properties WHERE client_id = :id"), conn, params={"id": client_id})
-        properties = props_df.to_dict(orient='records')
         
-        # Считаем общую сумму долга автоматически
         total_debt = creditors_df['debt_amount'].sum() if not creditors_df.empty else 0
 
-        # Упаковываем всё в словарь (эти ключи будем писать в Word внутри {{ }})
+        # Возвращаем словарь со всеми тегами для Word-шаблонов
         return {
-            "client_name": client.name if client and client.name else "",
-            "phone": client.phone if client and client.phone else "",
-            "passport": client.passport if client and client.passport else "",
-            "snils": client.snils if client and client.snils else "",
-            "inn": client.inn if client and client.inn else "",
-            "address": client.address if client and client.address else "",
-            "total_debt": f"{total_debt:,.2f}".replace(',', ' '), # Форматируем красиво: 1 500 000.00
-            "creditors": creditors,
-            "properties": properties
+            "client_name": client.get('name') or "",
+            "phone": client.get('phone') or "",
+            
+            # Разделенное ФИО
+            "last_name": client.get('last_name') or "",
+            "first_name": client.get('first_name') or "",
+            "patronymic": client.get('patronymic') or "",
+            
+            # Разделенный паспорт
+            "passport_series": client.get('passport_series') or client.get('passport') or "",
+            "passport_issued_by": client.get('passport_issued_by') or "",
+            
+            "snils": client.get('snils') or "",
+            "inn": client.get('inn') or "",
+            
+            # Данные для банкротства
+            "birth_date": client.get('birth_date').strftime('%d.%m.%Y') if client.get('birth_date') else "",
+            "birth_place": client.get('birth_place') or "",
+            "court_name": client.get('court_name') or "",
+            "sro_name": client.get('sro_name') or "",
+            
+            # Разделенный адрес
+            "addr_region": client.get('addr_region') or "",
+            "addr_district": client.get('addr_district') or "",
+            "addr_city": client.get('addr_city') or "",
+            "addr_settlement": client.get('addr_settlement') or "",
+            "addr_street": client.get('addr_street') or "",
+            "addr_house": client.get('addr_house') or "",
+            "addr_corpus": client.get('addr_corpus') or "",
+            "addr_flat": client.get('addr_flat') or "",
+            
+            # Списки и суммы
+            "total_debt": f"{total_debt:,.2f}".replace(',', ' '),
+            "creditors": creditors_df.to_dict(orient='records'),
+            "properties": props_df.to_dict(orient='records')
         }
 
 def generate_word_document(template_path, context):
     """Берет шаблон .docx, подставляет контекст и возвращает готовый файл в байтах."""
     if not os.path.exists(template_path):
-        return None # Если файла шаблона нет, возвращаем пустоту
+        return None
         
     doc = DocxTemplate(template_path)
     doc.render(context)
