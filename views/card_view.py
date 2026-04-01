@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, date
 
 from utils.ocr_engine import process_document_image
 from utils.pdf_generator import generate_contract_pdf
@@ -9,10 +9,8 @@ from utils.word_generator import get_client_context, generate_word_document
 
 def render(engine):
     st.subheader("🔍 Карточка клиента")
-    
     with engine.connect() as conn:
         cl_list = pd.read_sql("SELECT id, name FROM clients ORDER BY name", conn)
-    
     if cl_list.empty:
         st.info("База клиентов пуста.")
         return
@@ -25,55 +23,92 @@ def render(engine):
     c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
     
     with engine.connect() as conn:
-        c_info = conn.execute(text("""
-            SELECT name, phone, contract_no, comment, total_amount, passport, snils, inn, address 
-            FROM clients WHERE id = :id
-        """), {"id": c_id}).fetchone()
+        # Вытаскиваем все данные как словарь для удобства
+        c_info_row = conn.execute(text("SELECT * FROM clients WHERE id = :id"), {"id": c_id}).fetchone()
+        c_info = c_info_row._mapping if c_info_row else {}
     
     c1, c2, c3 = st.columns(3)
-    c1.metric("📞 Телефон", c_info[1] if c_info[1] else "—")
-    c2.metric("📄 Договор", f"№{c_info[2]}" if c_info[2] else "—")
-    c3.metric("💰 Сумма", f"{c_info[4]:,.0f} ₽")
-
+    c1.metric("📞 Телефон", c_info.get('phone') or "—")
+    c2.metric("📄 Договор", f"№{c_info.get('contract_no')}" if c_info.get('contract_no') else "—")
+    c3.metric("💰 Сумма", f"{c_info.get('total_amount') or 0:,.0f} ₽")
     st.divider()
     
-    # 👇 ТЕПЕРЬ У НАС 5 ВКЛАДОК 👇
-    tab_main, tab_docs, tab_fin, tab_cred, tab_prop = st.tabs([
-        "📝 Данные", "📎 Документы", "💳 Финансы", "🏦 Кредиторы", "🏠 Имущество"
-    ])
+    tab_main, tab_docs, tab_fin, tab_cred, tab_prop = st.tabs(["📝 Данные", "📎 Документы", "💳 Финансы", "🏦 Кредиторы", "🏠 Имущество"])
 
     # --- Вкладка 1: Данные ---
     with tab_main:
         with st.form(f"f_edit_{c_id}"):
-            un = st.text_input("ФИО", value=c_info[0] or "")
-            up = st.text_input("Телефон", value=c_info[1] or "")
-            uc = st.text_input("Номер договора", value=c_info[2] or "")
+            st.markdown("### 👤 Основные данные (ФИО)")
+            f_col1, f_col2, f_col3 = st.columns(3)
+            ulast = f_col1.text_input("Фамилия", value=c_info.get('last_name') or "")
+            ufirst = f_col2.text_input("Имя", value=c_info.get('first_name') or "")
+            upat = f_col3.text_input("Отчество", value=c_info.get('patronymic') or "")
+            
+            p_col1, p_col2 = st.columns(2)
+            up = p_col1.text_input("Телефон", value=c_info.get('phone') or "")
+            uc = p_col2.text_input("Номер договора", value=c_info.get('contract_no') or "")
 
-            st.markdown("### 🪪 Документы (текст)")
-            upass = st.text_input("Паспорт", value=c_info[5] or "")
-            usnils = st.text_input("СНИЛС", value=c_info[6] or "")
-            uinn = st.text_input("ИНН", value=c_info[7] or "")
-            uaddr = st.text_input("Адрес", value=c_info[8] or "")
-            ucm = st.text_area("Комментарий", value=c_info[3] or "")
+            st.divider()
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("### 🪪 Данные паспорта")
+                upass = st.text_input("Серия и номер паспорта", value=c_info.get('passport_series') or c_info.get('passport') or "")
+                upass_issued = st.text_input("Когда и кем выдан", value=c_info.get('passport_issued_by') or "")
+                usnils = st.text_input("СНИЛС", value=c_info.get('snils') or "")
+                uinn = st.text_input("ИНН", value=c_info.get('inn') or "")
+            
+            with col2:
+                st.markdown("### 🏛 Данные для банкротства")
+                ubirthd = st.date_input("Дата рождения", value=c_info.get('birth_date') if c_info.get('birth_date') else date(1980, 1, 1))
+                ubirthp = st.text_input("Место рождения", value=c_info.get('birth_place') or "")
+                ucourt = st.text_input("Арбитражный суд", value=c_info.get('court_name') or "", help="Например: Арбитражный суд г. Москвы")
+                usro = st.text_input("Название СРО", value=c_info.get('sro_name') or "")
+
+            st.divider()
+            st.markdown("### 📍 Адрес регистрации")
+            a_col1, a_col2, a_col3, a_col4 = st.columns(4)
+            areg = a_col1.text_input("Регион", value=c_info.get('addr_region') or "")
+            adist = a_col2.text_input("Район", value=c_info.get('addr_district') or "")
+            acity = a_col3.text_input("Город", value=c_info.get('addr_city') or "")
+            aset = a_col4.text_input("Населенный пункт", value=c_info.get('addr_settlement') or "")
+
+            a_col5, a_col6, a_col7, a_col8 = st.columns(4)
+            astr = a_col5.text_input("Улица", value=c_info.get('addr_street') or "")
+            ahouse = a_col6.text_input("Дом", value=c_info.get('addr_house') or "")
+            acorp = a_col7.text_input("Корпус", value=c_info.get('addr_corpus') or "")
+            aflat = a_col8.text_input("Квартира", value=c_info.get('addr_flat') or "")
+
+            ucm = st.text_area("Комментарий", value=c_info.get('comment') or "")
 
             if st.form_submit_button("Сохранить изменения", type="primary"):
+                # Склеиваем полное имя для старых функций
+                full_name = f"{ulast} {ufirst} {upat}".strip()
+                
                 with engine.begin() as conn:
                     conn.execute(text("""
                         UPDATE clients 
-                        SET name=:n, phone=:p, contract_no=:c, comment=:cm,
-                            passport=:pass, snils=:snils, inn=:inn, address=:addr
+                        SET name=:n, last_name=:ln, first_name=:fn, patronymic=:pat,
+                            phone=:p, contract_no=:c, comment=:cm, 
+                            passport_series=:pass, passport_issued_by=:pass_issued, 
+                            snils=:snils, inn=:inn,
+                            birth_date=:bd, birth_place=:bp, court_name=:court, sro_name=:sro,
+                            addr_region=:areg, addr_district=:adist, addr_city=:acity, addr_settlement=:aset,
+                            addr_street=:astr, addr_house=:ahouse, addr_corpus=:acorp, addr_flat=:aflat
                         WHERE id=:id
                     """), {
-                        "n": un, "p": up, "c": uc, "cm": ucm,
-                        "pass": upass, "snils": usnils,
-                        "inn": uinn, "addr": uaddr, "id": c_id
+                        "n": full_name, "ln": ulast, "fn": ufirst, "pat": upat,
+                        "p": up, "c": uc, "cm": ucm, "pass": upass, "pass_issued": upass_issued, 
+                        "snils": usnils, "inn": uinn, "bd": ubirthd, "bp": ubirthp, 
+                        "court": ucourt, "sro": usro,
+                        "areg": areg, "adist": adist, "acity": acity, "aset": aset,
+                        "astr": astr, "ahouse": ahouse, "acorp": acorp, "aflat": aflat,
+                        "id": c_id
                     })
                 st.success("Данные успешно сохранены")
                 st.rerun()
 
         st.divider()
         with st.expander("⚠️ Опасная зона: Удаление клиента"):
-            st.warning("Внимание! Удаление клиента приведет к безвозвратному удалению всех его данных.")
             confirm_delete = st.checkbox("Я понимаю последствия и хочу удалить этого клиента", key=f"conf_del_{c_id}")
             if st.button("🗑️ Удалить клиента навсегда", type="primary", disabled=not confirm_delete, use_container_width=True):
                 with engine.begin() as conn:
@@ -86,7 +121,6 @@ def render(engine):
         st.subheader("📎 Загрузка документов")
         doc_type = st.selectbox("Тип документа", ["passport", "snils", "inn"], format_func=lambda x: {"passport": "Паспорт", "snils": "СНИЛС", "inn": "ИНН"}[x])
         uploaded_doc = st.file_uploader("Загрузить файл", type=["png", "jpg", "jpeg", "pdf"], key=f"upload_{c_id}")
-        
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🤖 Распознать (OCR)", key=f"ocr_{c_id}"):
@@ -97,7 +131,7 @@ def render(engine):
                             with engine.begin() as conn:
                                 if doc_type == "snils" and result["snils"]: conn.execute(text("UPDATE clients SET snils=:v WHERE id=:id"), {"v": result["snils"], "id": c_id})
                                 if doc_type == "inn" and result["inn"]: conn.execute(text("UPDATE clients SET inn=:v WHERE id=:id"), {"v": result["inn"], "id": c_id})
-                                if doc_type == "passport" and result["passport"]: conn.execute(text("UPDATE clients SET passport=:v WHERE id=:id"), {"v": result["passport"], "id": c_id})
+                                if doc_type == "passport" and result["passport"]: conn.execute(text("UPDATE clients SET passport_series=:v WHERE id=:id"), {"v": result["passport"], "id": c_id})
                             st.success("Распознано!")
                             st.rerun()
                         else: st.error("Ошибка чтения")
@@ -114,7 +148,6 @@ def render(engine):
         st.markdown("### 📂 Загруженные файлы")
         with engine.connect() as conn:
             files_df = pd.read_sql(text("SELECT id, filename, file_type FROM client_files WHERE client_id = :id"), conn, params={"id": c_id})
-        
         if not files_df.empty and 'file_type' in files_df.columns:
             for doc in ["passport", "snils", "inn"]:
                 doc_files = files_df[files_df['file_type'] == doc]
@@ -129,42 +162,28 @@ def render(engine):
                                 with engine.begin() as conn_del: conn_del.execute(text("DELETE FROM client_files WHERE id=:id"), {"id": int(f['id'])})
                                 st.rerun()
         else: st.info("Нет файлов")
-# 👇 ДОБАВЛЯЕМ БЛОК ГЕНЕРАЦИИ WORD-ДОКУМЕНТОВ 👇
+
         st.divider()
         st.subheader("🖨️ Генерация документов (Банкротство)")
-        st.info("💡 Убедитесь, что в папке `templates/` в корне проекта лежат файлы шаблонов (zayavlenie.docx, kreditory.docx, opis.docx).")
-        
-        # Импортируем наш новый генератор (лучше добавить этот импорт в самый верх файла card_view.py)
-        from utils.word_generator import get_client_context, generate_word_document
-        
         col_w1, col_w2, col_w3 = st.columns(3)
-        
-        # Подготавливаем данные один раз, чтобы не дергать базу трижды
         context = get_client_context(engine, c_id)
         
         with col_w1:
             if st.button("📄 Заявление", use_container_width=True):
                 doc_bytes = generate_word_document("templates/zayavlenie.docx", context)
-                if doc_bytes:
-                    st.download_button("📥 Скачать Заявление", data=doc_bytes, file_name=f"Заявление_{c_info[0]}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                else:
-                    st.error("Шаблон templates/zayavlenie.docx не найден!")
-                    
+                if doc_bytes: st.download_button("📥 Скачать Заявление", data=doc_bytes, file_name=f"Заявление_{c_info.get('last_name')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                else: st.error("Шаблон не найден!")
         with col_w2:
             if st.button("🏦 Список кредиторов", use_container_width=True):
                 doc_bytes = generate_word_document("templates/kreditory.docx", context)
-                if doc_bytes:
-                    st.download_button("📥 Скачать Кредиторов", data=doc_bytes, file_name=f"Кредиторы_{c_info[0]}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                else:
-                    st.error("Шаблон templates/kreditory.docx не найден!")
-                    
+                if doc_bytes: st.download_button("📥 Скачать Кредиторов", data=doc_bytes, file_name=f"Кредиторы_{c_info.get('last_name')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                else: st.error("Шаблон не найден!")
         with col_w3:
             if st.button("🏠 Опись имущества", use_container_width=True):
                 doc_bytes = generate_word_document("templates/opis.docx", context)
-                if doc_bytes:
-                    st.download_button("📥 Скачать Опись", data=doc_bytes, file_name=f"Опись_{c_info[0]}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                else:
-                    st.error("Шаблон templates/opis.docx не найден!")
+                if doc_bytes: st.download_button("📥 Скачать Опись", data=doc_bytes, file_name=f"Опись_{c_info.get('last_name')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                else: st.error("Шаблон не найден!")
+
     # --- Вкладка 3: Финансы ---
     with tab_fin:
         with engine.connect() as conn:
@@ -217,42 +236,21 @@ def render(engine):
                 st.success("Финансы обновлены!")
                 st.rerun()
 
-        st.divider()
-        st.subheader("📄 Договор услуг")
-        if st.button("Сгенерировать PDF", key=f"gen_pdf_{c_id}"):
-            with engine.connect() as conn:
-                tpl = conn.execute(text("SELECT content FROM contract_templates LIMIT 1")).fetchone()
-            pdf_file = generate_contract_pdf(c_info, curr_payments, tpl[0] if tpl else "")
-            st.download_button("📥 Скачать PDF", data=pdf_file, file_name=f"contract_{c_info[0]}.pdf", mime="application/pdf")
-
-    # 👇 НОВЫЕ ВКЛАДКИ ДЛЯ БАНКРОТСТВА 👇
-
     # --- Вкладка 4: Кредиторы ---
     with tab_cred:
-        st.subheader("🏦 Список кредиторов (Банки, МФО, физ. лица)")
-        
-        # Форма добавления кредитора
+        st.subheader("🏦 Список кредиторов")
         with st.form(f"add_creditor_{c_id}", clear_on_submit=True):
             col1, col2, col3 = st.columns([2, 2, 1])
-            with col1: c_name = st.text_input("Наименование кредитора (например: ПАО Сбербанк)")
+            with col1: c_name = st.text_input("Наименование кредитора")
             with col2: c_info_doc = st.text_input("Основание (№ договора, дата)")
             with col3: c_amount = st.number_input("Сумма долга, ₽", min_value=0.0, step=1000.0)
-            
             if st.form_submit_button("➕ Добавить кредитора", type="primary"):
                 if c_name:
-                    with engine.begin() as conn:
-                        conn.execute(text("""
-                            INSERT INTO creditors (client_id, creditor_name, contract_info, debt_amount) 
-                            VALUES (:cid, :name, :info, :amt)
-                        """), {"cid": c_id, "name": c_name, "info": c_info_doc, "amt": c_amount})
-                    st.success("Кредитор добавлен!")
+                    with engine.begin() as conn: conn.execute(text("INSERT INTO creditors (client_id, creditor_name, contract_info, debt_amount) VALUES (:cid, :name, :info, :amt)"), {"cid": c_id, "name": c_name, "info": c_info_doc, "amt": c_amount})
                     st.rerun()
 
         st.divider()
-        # Вывод кредиторов
-        with engine.connect() as conn:
-            creditors_df = pd.read_sql(text("SELECT id, creditor_name, contract_info, debt_amount FROM creditors WHERE client_id = :id"), conn, params={"id": c_id})
-        
+        with engine.connect() as conn: creditors_df = pd.read_sql(text("SELECT id, creditor_name, contract_info, debt_amount FROM creditors WHERE client_id = :id"), conn, params={"id": c_id})
         if not creditors_df.empty:
             for _, row in creditors_df.iterrows():
                 cc1, cc2, cc3, cc4 = st.columns([3, 3, 2, 1])
@@ -260,41 +258,26 @@ def render(engine):
                 cc2.caption(f"Договор: {row['contract_info']}")
                 cc3.write(f"**{row['debt_amount']:,.0f} ₽**")
                 if cc4.button("🗑️", key=f"del_cred_{row['id']}"):
-                    with engine.begin() as conn:
-                        conn.execute(text("DELETE FROM creditors WHERE id = :id"), {"id": row['id']})
+                    with engine.begin() as conn: conn.execute(text("DELETE FROM creditors WHERE id = :id"), {"id": row['id']})
                     st.rerun()
-            
-            st.info(f"Итого долгов: **{creditors_df['debt_amount'].sum():,.0f} ₽**")
-        else:
-            st.write("Кредиторы пока не добавлены.")
+        else: st.write("Кредиторы пока не добавлены.")
 
     # --- Вкладка 5: Имущество ---
     with tab_prop:
         st.subheader("🏠 Имущество и активы")
-        
-        # Форма добавления имущества
         with st.form(f"add_prop_{c_id}", clear_on_submit=True):
             col1, col2, col3, col4 = st.columns([1.5, 3, 1.5, 1])
             with col1: p_type = st.selectbox("Тип", ["Недвижимость", "Транспорт", "Счета/Вклады", "Иное"])
             with col2: p_desc = st.text_input("Описание (Адрес / Марка авто)")
             with col3: p_val = st.number_input("Оценочная стоимость, ₽", min_value=0.0, step=10000.0)
             with col4: p_pledged = st.checkbox("В залоге?")
-            
             if st.form_submit_button("➕ Добавить имущество", type="primary"):
                 if p_desc:
-                    with engine.begin() as conn:
-                        conn.execute(text("""
-                            INSERT INTO properties (client_id, property_type, description, estimated_value, is_pledged) 
-                            VALUES (:cid, :ptype, :desc, :val, :pledged)
-                        """), {"cid": c_id, "ptype": p_type, "desc": p_desc, "val": p_val, "pledged": p_pledged})
-                    st.success("Имущество добавлено!")
+                    with engine.begin() as conn: conn.execute(text("INSERT INTO properties (client_id, property_type, description, estimated_value, is_pledged) VALUES (:cid, :ptype, :desc, :val, :pledged)"), {"cid": c_id, "ptype": p_type, "desc": p_desc, "val": p_val, "pledged": p_pledged})
                     st.rerun()
 
         st.divider()
-        # Вывод имущества
-        with engine.connect() as conn:
-            props_df = pd.read_sql(text("SELECT id, property_type, description, estimated_value, is_pledged FROM properties WHERE client_id = :id"), conn, params={"id": c_id})
-        
+        with engine.connect() as conn: props_df = pd.read_sql(text("SELECT id, property_type, description, estimated_value, is_pledged FROM properties WHERE client_id = :id"), conn, params={"id": c_id})
         if not props_df.empty:
             for _, row in props_df.iterrows():
                 pc1, pc2, pc3, pc4, pc5 = st.columns([2, 3, 2, 1, 1])
@@ -303,8 +286,6 @@ def render(engine):
                 pc3.write(f"{row['estimated_value']:,.0f} ₽")
                 pc4.write("🔒 Да" if row['is_pledged'] else "—")
                 if pc5.button("🗑️", key=f"del_prop_{row['id']}"):
-                    with engine.begin() as conn:
-                        conn.execute(text("DELETE FROM properties WHERE id = :id"), {"id": row['id']})
+                    with engine.begin() as conn: conn.execute(text("DELETE FROM properties WHERE id = :id"), {"id": row['id']})
                     st.rerun()
-        else:
-            st.write("Имущество пока не добавлено.")
+        else: st.write("Имущество пока не добавлено.")
