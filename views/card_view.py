@@ -23,7 +23,6 @@ def render(engine):
     c_id = int(cl_list[cl_list['name'] == sel_c]['id'].iloc[0])
     
     with engine.connect() as conn:
-        # Вытаскиваем все данные как словарь для удобства
         c_info_row = conn.execute(text("SELECT * FROM clients WHERE id = :id"), {"id": c_id}).fetchone()
         c_info = c_info_row._mapping if c_info_row else {}
     
@@ -66,24 +65,26 @@ def render(engine):
 
             st.divider()
             st.markdown("### 📍 Адрес регистрации")
-            a_col1, a_col2, a_col3, a_col4 = st.columns(4)
-            areg = a_col1.text_input("Регион", value=c_info.get('addr_region') or "")
-            adist = a_col2.text_input("Район", value=c_info.get('addr_district') or "")
-            acity = a_col3.text_input("Город", value=c_info.get('addr_city') or "")
-            aset = a_col4.text_input("Населенный пункт", value=c_info.get('addr_settlement') or "")
+            # 3 ряда по 3 колонки для красивого выравнивания
+            a_col1, a_col2, a_col3 = st.columns(3)
+            azip = a_col1.text_input("Почтовый индекс", value=c_info.get('addr_zip') or "")
+            areg = a_col2.text_input("Регион", value=c_info.get('addr_region') or "")
+            adist = a_col3.text_input("Район", value=c_info.get('addr_district') or "")
 
-            a_col5, a_col6, a_col7, a_col8 = st.columns(4)
-            astr = a_col5.text_input("Улица", value=c_info.get('addr_street') or "")
-            ahouse = a_col6.text_input("Дом", value=c_info.get('addr_house') or "")
-            acorp = a_col7.text_input("Корпус", value=c_info.get('addr_corpus') or "")
-            aflat = a_col8.text_input("Квартира", value=c_info.get('addr_flat') or "")
+            a_col4, a_col5, a_col6 = st.columns(3)
+            acity = a_col4.text_input("Город", value=c_info.get('addr_city') or "")
+            aset = a_col5.text_input("Населенный пункт", value=c_info.get('addr_settlement') or "")
+            astr = a_col6.text_input("Улица", value=c_info.get('addr_street') or "")
+
+            a_col7, a_col8, a_col9 = st.columns(3)
+            ahouse = a_col7.text_input("Дом", value=c_info.get('addr_house') or "")
+            acorp = a_col8.text_input("Корпус", value=c_info.get('addr_corpus') or "")
+            aflat = a_col9.text_input("Квартира", value=c_info.get('addr_flat') or "")
 
             ucm = st.text_area("Комментарий", value=c_info.get('comment') or "")
 
             if st.form_submit_button("Сохранить изменения", type="primary"):
-                # Склеиваем полное имя для старых функций
                 full_name = f"{ulast} {ufirst} {upat}".strip()
-                
                 with engine.begin() as conn:
                     conn.execute(text("""
                         UPDATE clients 
@@ -92,7 +93,7 @@ def render(engine):
                             passport_series=:pass, passport_issued_by=:pass_issued, 
                             snils=:snils, inn=:inn,
                             birth_date=:bd, birth_place=:bp, court_name=:court, sro_name=:sro,
-                            addr_region=:areg, addr_district=:adist, addr_city=:acity, addr_settlement=:aset,
+                            addr_zip=:azip, addr_region=:areg, addr_district=:adist, addr_city=:acity, addr_settlement=:aset,
                             addr_street=:astr, addr_house=:ahouse, addr_corpus=:acorp, addr_flat=:aflat
                         WHERE id=:id
                     """), {
@@ -100,7 +101,7 @@ def render(engine):
                         "p": up, "c": uc, "cm": ucm, "pass": upass, "pass_issued": upass_issued, 
                         "snils": usnils, "inn": uinn, "bd": ubirthd, "bp": ubirthp, 
                         "court": ucourt, "sro": usro,
-                        "areg": areg, "adist": adist, "acity": acity, "aset": aset,
+                        "azip": azip, "areg": areg, "adist": adist, "acity": acity, "aset": aset,
                         "astr": astr, "ahouse": ahouse, "acorp": acorp, "aflat": aflat,
                         "id": c_id
                     })
