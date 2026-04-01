@@ -13,6 +13,15 @@ def get_client_context(engine, client_id):
         creditors_df = pd.read_sql(text("SELECT * FROM creditors WHERE client_id = :id"), conn, params={"id": client_id})
         props_df = pd.read_sql(text("SELECT * FROM properties WHERE client_id = :id"), conn, params={"id": client_id})
         
+        # Получаем данные уполномоченного органа, если он выбран
+        auth_body_name = ""
+        auth_body_address = ""
+        if client.get('auth_body_id'):
+            ab_row = conn.execute(text("SELECT name, address FROM authorized_bodies WHERE id = :id"), {"id": client.get('auth_body_id')}).fetchone()
+            if ab_row:
+                auth_body_name = ab_row[0]
+                auth_body_address = ab_row[1]
+        
         total_debt = creditors_df['debt_amount'].sum() if not creditors_df.empty else 0
 
         # Собираем умный полный адрес (игнорируя пустые поля)
@@ -27,8 +36,6 @@ def get_client_context(engine, client_id):
             client.get('addr_corpus'),
             client.get('addr_flat')
         ]
-        
-        # Склеиваем только те элементы, которые не пустые, добавляя запятую и пробел
         valid_parts = [str(part).strip() for part in address_components if part and str(part).strip()]
         full_address_string = ", ".join(valid_parts)
 
@@ -45,7 +52,6 @@ def get_client_context(engine, client_id):
             # Разделенный паспорт
             "passport_series": client.get('passport_series') or client.get('passport') or "",
             "passport_issued_by": client.get('passport_issued_by') or "",
-            
             "snils": client.get('snils') or "",
             "inn": client.get('inn') or "",
             
@@ -55,18 +61,15 @@ def get_client_context(engine, client_id):
             "court_name": client.get('court_name') or "",
             "sro_name": client.get('sro_name') or "",
             
-            # Индивидуальные теги адреса (если вдруг понадобятся отдельно)
-            "addr_zip": client.get('addr_zip') or "",
-            "addr_region": client.get('addr_region') or "",
-            "addr_district": client.get('addr_district') or "",
-            "addr_city": client.get('addr_city') or "",
-            "addr_settlement": client.get('addr_settlement') or "",
-            "addr_street": client.get('addr_street') or "",
-            "addr_house": client.get('addr_house') or "",
-            "addr_corpus": client.get('addr_corpus') or "",
-            "addr_flat": client.get('addr_flat') or "",
+            # Супруг(а)
+            "spouse_name": client.get('spouse_name') or "",
+            "spouse_address": client.get('spouse_address') or "",
             
-            # ⭐️ Новый супер-тег: склеенный полный адрес
+            # Уполномоченный орган
+            "auth_body_name": auth_body_name,
+            "auth_body_address": auth_body_address,
+            
+            # Адрес
             "full_address": full_address_string,
             
             # Списки и суммы
