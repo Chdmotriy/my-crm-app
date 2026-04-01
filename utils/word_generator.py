@@ -15,6 +15,23 @@ def get_client_context(engine, client_id):
         
         total_debt = creditors_df['debt_amount'].sum() if not creditors_df.empty else 0
 
+        # Собираем умный полный адрес (игнорируя пустые поля)
+        address_components = [
+            client.get('addr_zip'),
+            client.get('addr_region'),
+            client.get('addr_district'),
+            client.get('addr_city'),
+            client.get('addr_settlement'),
+            client.get('addr_street'),
+            client.get('addr_house'),
+            client.get('addr_corpus'),
+            client.get('addr_flat')
+        ]
+        
+        # Склеиваем только те элементы, которые не пустые, добавляя запятую и пробел
+        valid_parts = [str(part).strip() for part in address_components if part and str(part).strip()]
+        full_address_string = ", ".join(valid_parts)
+
         # Возвращаем словарь со всеми тегами для Word-шаблонов
         return {
             "client_name": client.get('name') or "",
@@ -38,7 +55,8 @@ def get_client_context(engine, client_id):
             "court_name": client.get('court_name') or "",
             "sro_name": client.get('sro_name') or "",
             
-            # Разделенный адрес
+            # Индивидуальные теги адреса (если вдруг понадобятся отдельно)
+            "addr_zip": client.get('addr_zip') or "",
             "addr_region": client.get('addr_region') or "",
             "addr_district": client.get('addr_district') or "",
             "addr_city": client.get('addr_city') or "",
@@ -47,6 +65,9 @@ def get_client_context(engine, client_id):
             "addr_house": client.get('addr_house') or "",
             "addr_corpus": client.get('addr_corpus') or "",
             "addr_flat": client.get('addr_flat') or "",
+            
+            # ⭐️ Новый супер-тег: склеенный полный адрес
+            "full_address": full_address_string,
             
             # Списки и суммы
             "total_debt": f"{total_debt:,.2f}".replace(',', ' '),
