@@ -2,7 +2,7 @@ import io
 import os
 import pandas as pd
 from sqlalchemy import text
-from docxtpl import DocxTemplate
+from docxtpl import DocxTemplate, RichText  # 👈 Добавили RichText для многострочного текста
 
 def get_client_context(engine, client_id):
     """Собирает все данные клиента из разных таблиц в один словарь для шаблона Word."""
@@ -27,7 +27,7 @@ def get_client_context(engine, client_id):
         ]
         full_address_string = ", ".join([str(p).strip() for p in address_components if p and str(p).strip()])
 
-        # 2. Формируем списки кредиторов для Word (Шапка и Тело)
+        # 2. Формируем списки кредиторов для Word
         creditors_header_lines = []
         creditors_body_lines = []
         total_debt = 0
@@ -41,14 +41,12 @@ def get_client_context(engine, client_id):
             total_debt += c_total
             c_total_str = f"{c_total:,.2f}".replace(',', ' ')
             
-            # Строка для шапки (Кредитор 1: ПАО Сбербанк, г. Москва...)
+            # Строка для шапки
             header_str = f"Кредитор {idx}: {c_name}, {c_addr}"
             creditors_header_lines.append(header_str)
             
-            # Оформляем список договоров через запятую с переносом строки, если их несколько
+            # Строка для тела
             contracts_formatted = ",\n".join([line.strip() for line in c_contracts.split('\n') if line.strip()])
-            
-            # Строка для тела заявления
             body_str = f"Требований Кредитора {idx} ({c_name}) в размере {c_total_str} рублей, которые в свою очередь вытекают из следующих заключенных договоров:\n{contracts_formatted}"
             creditors_body_lines.append(body_str)
 
@@ -83,10 +81,11 @@ def get_client_context(engine, client_id):
             
             "full_address": full_address_string,
             
-            # ⭐️ НОВЫЕ ТЕГИ ДЛЯ КРЕДИТОРОВ
             "total_debt": f"{total_debt:,.2f}".replace(',', ' '),
-            "creditors_header_text": final_creditors_header,
-            "creditors_body_text": final_creditors_body,
+            
+            # ⭐️ Оборачиваем текст в RichText, чтобы Word правильно понял абзацы!
+            "creditors_header_text": RichText(final_creditors_header) if final_creditors_header else "",
+            "creditors_body_text": RichText(final_creditors_body) if final_creditors_body else "",
             
             "properties": props_df.to_dict('records')
         }
