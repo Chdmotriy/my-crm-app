@@ -145,7 +145,7 @@ def render(engine):
                 with engine.begin() as conn: conn.execute(text("DELETE FROM clients WHERE id = :id"), {"id": c_id})
                 st.rerun()
 
-    # --- Вкладка 2: Документы (Осталась без изменений) ---
+    # --- Вкладка 2: Документы ---
     with tab_docs:
         st.subheader("📎 Загрузка документов")
         doc_type = st.selectbox("Тип документа", ["passport", "snils", "inn"], format_func=lambda x: {"passport": "Паспорт", "snils": "СНИЛС", "inn": "ИНН"}[x])
@@ -186,17 +186,20 @@ def render(engine):
         with col_w1:
             if st.button("📄 Заявление", use_container_width=True):
                 doc_bytes = generate_word_document("templates/zayavlenie.docx", context)
-                if doc_bytes: st.download_button("📥 Скачать", data=doc_bytes, file_name=f"Заявление_{c_info.get('last_name')}.docx")
+                if doc_bytes: st.download_button("📥 Скачать Заявление", data=doc_bytes, file_name=f"Заявление_{c_info.get('last_name')}.docx")
+                else: st.error("Не найден шаблон templates/zayavlenie.docx")
         with col_w2:
             if st.button("🏦 Список кредиторов", use_container_width=True):
                 doc_bytes = generate_word_document("templates/kreditory.docx", context)
-                if doc_bytes: st.download_button("📥 Скачать", data=doc_bytes, file_name=f"Кредиторы_{c_info.get('last_name')}.docx")
+                if doc_bytes: st.download_button("📥 Скачать Кредиторов", data=doc_bytes, file_name=f"Кредиторы_{c_info.get('last_name')}.docx")
+                else: st.error("Не найден шаблон templates/kreditory.docx")
         with col_w3:
             if st.button("🏠 Опись", use_container_width=True):
                 doc_bytes = generate_word_document("templates/opis.docx", context)
-                if doc_bytes: st.download_button("📥 Скачать", data=doc_bytes, file_name=f"Опись_{c_info.get('last_name')}.docx")
+                if doc_bytes: st.download_button("📥 Скачать Опись", data=doc_bytes, file_name=f"Опись_{c_info.get('last_name')}.docx")
+                else: st.error("Не найден шаблон templates/opis.docx")
 
-    # --- Вкладка 3: Финансы (Осталась без изменений) ---
+    # --- Вкладка 3: Финансы ---
     with tab_fin:
         with engine.connect() as conn:
             curr_payments = pd.read_sql(text("SELECT id, date, amount, status FROM schedule WHERE client_id = :id ORDER BY date"), conn, params={"id": c_id})
@@ -214,6 +217,7 @@ def render(engine):
                     with p_col4: del_p = st.checkbox("🗑️", key=f"del_inc_{row['id']}")
                     if not del_p: updated_payments.append({"id": row["id"], "date": d_val, "amount": a_val, "status": s_val})
             
+            st.divider()
             st.subheader("💸 Расходы")
             categories_list = ["Налоги", "Реклама", "Офис", "Пошлины", "Прочее"]
             updated_expenses = []
@@ -245,11 +249,28 @@ def render(engine):
                     if new_e_desc: conn.execute(text("INSERT INTO expenses (client_id, description, category, amount, date, status) VALUES (:cid, :desc, :cat, :am, :dt, 'Планируется')"), {"cid": c_id, "desc": new_e_desc, "cat": new_e_cat, "am": new_e_am, "dt": new_e_date})
                 st.rerun()
 
-    # --- Вкладка 4: Кредиторы (ПОЛНОСТЬЮ ОБНОВЛЕННАЯ) ---
+        # 👈 ВОЗВРАЩЕННАЯ КНОПКА ГЕНЕРАЦИИ PDF-ДОГОВОРА 
+        st.divider()
+        st.subheader("📄 Договор услуг (PDF)")
+        if st.button("Сгенерировать PDF", key=f"gen_pdf_{c_id}", type="primary"):
+            with st.spinner("Создаем PDF..."):
+                with engine.connect() as conn:
+                    tpl = conn.execute(text("SELECT content FROM contract_templates LIMIT 1")).fetchone()
+                    contract_text = tpl[0] if tpl else ""
+                
+                # Формируем данные в старом формате для pdf_generator.py
+                old_c_info = (
+                    c_info.get('name', ''), c_info.get('phone', ''), c_info.get('contract_no', ''),
+                    c_info.get('comment', ''), c_info.get('total_amount', 0), 
+                    c_info.get('passport_series', ''), c_info.get('snils', ''), 
+                    c_info.get('inn', ''), c_info.get('addr_city', '')
+                )
+                pdf_file = generate_contract_pdf(old_c_info, curr_payments, contract_text)
+                st.download_button("📥 Скачать PDF договор", data=pdf_file, file_name=f"contract_{c_info.get('last_name')}.pdf", mime="application/pdf")
+
+    # --- Вкладка 4: Кредиторы ---
     with tab_cred:
         st.subheader("🏦 Управление кредиторами")
-        
-        # Динамический выбор кредитора (БЕЗ st.form, чтобы поля обновлялись сразу)
         c_options = ["Не выбран"] + [c['name'] for c in creditor_catalog] + ["➕ Добавить нового кредитора..."]
         sel_creditor = st.selectbox("Выберите из базы или добавьте нового", c_options)
 
@@ -273,11 +294,9 @@ def render(engine):
         if st.button("➕ Прикрепить кредитора к делу", type="primary"):
             if c_name:
                 with engine.begin() as conn:
-                    # Сохраняем в каталог, если новый
                     if sel_creditor == "➕ Добавить нового кредитора...":
                         conn.execute(text("INSERT INTO creditor_catalog (name, address) VALUES (:n, :a)"), {"n": c_name, "a": c_addr})
                     
-                    # Привязываем к клиенту
                     conn.execute(text("""
                         INSERT INTO creditors (client_id, creditor_name, creditor_address, contracts_info, principal_debt, penalty_debt, debt_amount) 
                         VALUES (:cid, :name, :addr, :contracts, :prin, :pen, :tot)
@@ -308,7 +327,7 @@ def render(engine):
             st.info(f"Общая сумма всех долгов: **{creditors_df['debt_amount'].sum():,.0f} ₽**")
         else: st.write("Нет прикрепленных кредиторов.")
 
-    # --- Вкладка 5: Имущество (Осталась без изменений) ---
+    # --- Вкладка 5: Имущество ---
     with tab_prop:
         st.subheader("🏠 Имущество и активы")
         with st.form(f"add_prop_{c_id}", clear_on_submit=True):
@@ -334,3 +353,4 @@ def render(engine):
                 if pc5.button("🗑️", key=f"del_prop_{row['id']}"):
                     with engine.begin() as conn: conn.execute(text("DELETE FROM properties WHERE id = :id"), {"id": row['id']})
                     st.rerun()
+        else: st.write("Имущество пока не добавлено.")
