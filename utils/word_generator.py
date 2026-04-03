@@ -2,7 +2,8 @@ import io
 import os
 import pandas as pd
 from sqlalchemy import text
-from docxtpl import DocxTemplate, RichText  # 👈 Добавили RichText для многострочного текста
+from docxtpl import DocxTemplate, RichText
+from datetime import datetime  # 👈 Добавили для работы с текущей датой
 
 def get_client_context(engine, client_id):
     """Собирает все данные клиента из разных таблиц в один словарь для шаблона Word."""
@@ -41,8 +42,11 @@ def get_client_context(engine, client_id):
             total_debt += c_total
             c_total_str = f"{c_total:,.2f}".replace(',', ' ')
             
-            # Строка для шапки
-            header_str = f"Кредитор {idx}: {c_name}, {c_addr}"
+            # 👇 ИСПРАВЛЕНО: Наименование, затем перенос строки и Адрес
+            if c_addr:
+                header_str = f"Кредитор {idx}: {c_name}\nАдрес: {c_addr}"
+            else:
+                header_str = f"Кредитор {idx}: {c_name}"
             creditors_header_lines.append(header_str)
             
             # Строка для тела
@@ -50,8 +54,8 @@ def get_client_context(engine, client_id):
             body_str = f"Требований Кредитора {idx} ({c_name}) в размере {c_total_str} рублей, которые в свою очередь вытекают из следующих заключенных договоров:\n{contracts_formatted}"
             creditors_body_lines.append(body_str)
 
-        # Склеиваем всё в два готовых текста
-        final_creditors_header = "\n".join(creditors_header_lines)
+        # Склеиваем всё. Между кредиторами в шапке делаем двойной отступ (\n\n) для красоты
+        final_creditors_header = "\n\n".join(creditors_header_lines)
         final_creditors_body = "\n\n".join(creditors_body_lines)
 
         return {
@@ -83,7 +87,9 @@ def get_client_context(engine, client_id):
             
             "total_debt": f"{total_debt:,.2f}".replace(',', ' '),
             
-            # ⭐️ Оборачиваем текст в RichText, чтобы Word правильно понял абзацы!
+            # ⭐️ НОВЫЙ ТЕГ ДАТЫ (Формат: ДД.ММ.ГГГГ)
+            "current_date": datetime.now().strftime('%d.%m.%Y'),
+            
             "creditors_header_text": RichText(final_creditors_header) if final_creditors_header else "",
             "creditors_body_text": RichText(final_creditors_body) if final_creditors_body else "",
             
