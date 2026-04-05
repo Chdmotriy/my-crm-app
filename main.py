@@ -74,8 +74,6 @@ def apply_custom_css():
 apply_custom_css()
 # 👆 КОНЕЦ CSS-МАГИИ 👆
 
-# Дальше идет твой старый код...
-
 try:
     ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
     DB_URL = st.secrets["DB_URL"]
@@ -97,27 +95,9 @@ if user_password != ADMIN_PASSWORD:
 engine = init_db_connection(DB_URL)
 setup_tables(engine)
 
-# --- 4. ГЛАВНЫЕ МЕТРИКИ (Отображаются на всех страницах) ---
-st.title("🏦 Интерактивная CRM")
 
-with engine.connect() as conn:
-    inc_data = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM schedule", conn)
-    exp_data = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM expenses", conn)
-    
-t_rev, p_rev = float(inc_data['t'].iloc[0] or 0), float(inc_data['p'].iloc[0] or 0)
-t_exp, p_exp = float(exp_data['t'].iloc[0] or 0), float(exp_data['p'].iloc[0] or 0)
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Общий оборот", f"{t_rev:,.0f} ₽")
-c2.metric("Всего затрат", f"{t_exp:,.0f} ₽", delta=f"-{t_exp:,.0f}", delta_color="inverse")
-c3.metric("Прибыль (план)", f"{(t_rev - t_exp):,.0f} ₽")
-c4.metric("Касса (факт)", f"{(p_rev - p_exp):,.0f} ₽")
-
-st.divider()
-
-# --- 5. НАВИГАЦИЯ (САЙДБАР) ---
-
-# 👈 ЧИТАЕМ ЗАПИСКУ ИЗ РЕЕСТРА ДО ТОГО, КАК ОТРИСУЕМ МЕНЮ
+# --- 4. НАВИГАЦИЯ (САЙДБАР) ---
+# Читаем записку из Реестра до того, как отрисуем меню
 if "change_page_to" in st.session_state:
     st.session_state.current_page = st.session_state.change_page_to
     del st.session_state.change_page_to # Удаляем записку, чтобы не зациклиться
@@ -133,7 +113,8 @@ with st.sidebar:
         ["📅 Календарь", "📈 Аналитика", "📋 Реестр", "🔍 Карточка", "➕ Новая сделка", "📄 Шаблон договора"],
         key="current_page"
     )
-# 👇 НОВЫЙ БЛОК: УМНЫЕ АЛЕРТЫ 👇
+    
+    # Умные алерты (Должники)
     st.divider()
     with engine.connect() as conn:
         overdue = pd.read_sql("""
@@ -150,6 +131,28 @@ with st.sidebar:
             st.markdown(f"**{row['name']}** \n❌ {row['amount']:,.0f} ₽ (от {row['date'].strftime('%d.%m')})")
     else:
         st.success("✅ Нет просроченных платежей")
+
+
+# --- 5. ГЛАВНЫЕ МЕТРИКИ (Только для Аналитики) ---
+st.title("🏦 Интерактивная CRM")
+
+# 👇 ТЕПЕРЬ МЕТРИКИ ОТОБРАЖАЮТСЯ ТОЛЬКО ЕСЛИ ВЫБРАНА АНАЛИТИКА 👇
+if page == "📈 Аналитика":
+    with engine.connect() as conn:
+        inc_data = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM schedule", conn)
+        exp_data = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM expenses", conn)
+        
+    t_rev, p_rev = float(inc_data['t'].iloc[0] or 0), float(inc_data['p'].iloc[0] or 0)
+    t_exp, p_exp = float(exp_data['t'].iloc[0] or 0), float(exp_data['p'].iloc[0] or 0)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Общий оборот", f"{t_rev:,.0f} ₽")
+    c2.metric("Всего затрат", f"{t_exp:,.0f} ₽", delta=f"-{t_exp:,.0f}", delta_color="inverse")
+    c3.metric("Прибыль (план)", f"{(t_rev - t_exp):,.0f} ₽")
+    c4.metric("Касса (факт)", f"{(p_rev - p_exp):,.0f} ₽")
+
+    st.divider()
+
 
 # --- 6. РОУТИНГ (Запуск выбранной страницы) ---
 if page == "📅 Календарь":
