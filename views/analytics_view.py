@@ -36,20 +36,31 @@ def render(engine):
     # 3. Отрисовка графика
     if not rev_m.empty or not exp_m.empty:
         # Объединяем доходы и расходы в одну таблицу, заполняем пустоты нулями
-        chart_data = pd.merge(rev_m, exp_m, on=['month', 'm_num'], how='outer').fillna(0).sort_values('m_num')
+        chart_data = pd.merge(rev_m, exp_m, on=['month', 'm_num'], how='outer').fillna(0)
         
+        # 👇 ИСПРАВЛЕНИЕ ОШИБКИ PLOTLY 👇
+        # Принудительно приводим обе колонки к единому формату (float)
+        chart_data['rev'] = chart_data['rev'].astype(float)
+        chart_data['exp'] = chart_data['exp'].astype(float)
+        
+        # Сортируем по номеру месяца, чтобы график шел по порядку (янв, фев, мар...)
+        chart_data = chart_data.sort_values('m_num')
+
         fig = px.bar(
-            chart_data, 
-            x='month', 
-            y=['rev', 'exp'], 
-            barmode='group', 
-            labels={'value': 'Сумма (₽)', 'month': 'Месяц', 'variable': 'Движение средств'},
-            color_discrete_map={'rev':'#28a745', 'exp':'#dc3545'}
+            chart_data,
+            x='month',
+            y=['rev', 'exp'],
+            barmode='group',
+            labels={'value': 'Сумма (₽)', 'month': 'Месяц', 'variable': 'Категория'},
+            title="Динамика доходов и расходов"
         )
         
-        # Делаем легенду красивой (переводим системные ключи в понятные слова)
-        fig.for_each_trace(lambda t: t.update(name='🟢 Доходы' if t.name == 'rev' else '🔴 Расходы'))
-        
+        # Переименовываем легенду для красоты
+        newnames = {'rev': 'Доходы', 'exp': 'Расходы'}
+        fig.for_each_trace(lambda t: t.update(name = newnames[t.name],
+                                              legendgroup = newnames[t.name],
+                                              hovertemplate = t.hovertemplate.replace(t.name, newnames[t.name])))
+
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info(f"📊 Нет финансовых операций (доходов или расходов) за {sel_year} год.")
