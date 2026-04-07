@@ -3,7 +3,7 @@ import pandas as pd
 from sqlalchemy import text
 
 # Импорт наших утилит
-from utils.db import init_db_connection, setup_tables
+from utils.db import init_db_connection
 
 # Импорт всех страниц интерфейса
 from views import (
@@ -93,8 +93,6 @@ if user_password != ADMIN_PASSWORD:
 # --- 3. ИНИЦИАЛИЗАЦИЯ БД ---
 # Используем кэшированное подключение, чтобы CRM летала!
 engine = init_db_connection(DB_URL)
-setup_tables(engine)
-
 
 # --- 4. НАВИГАЦИЯ (САЙДБАР) ---
 # Читаем записку из Реестра до того, как отрисуем меню
@@ -132,11 +130,9 @@ with st.sidebar:
     else:
         st.success("✅ Нет просроченных платежей")
 
-
 # --- 5. ГЛАВНЫЕ МЕТРИКИ (Только для Аналитики) ---
 st.title("🏦 Интерактивная CRM")
 
-# 👇 ТЕПЕРЬ МЕТРИКИ ОТОБРАЖАЮТСЯ ТОЛЬКО ЕСЛИ ВЫБРАНА АНАЛИТИКА 👇
 if page == "📈 Аналитика":
     with engine.connect() as conn:
         inc_data = pd.read_sql("SELECT SUM(amount) as t, SUM(CASE WHEN status='ОПЛАЧЕНО' THEN amount ELSE 0 END) as p FROM schedule", conn)
@@ -152,7 +148,6 @@ if page == "📈 Аналитика":
     c4.metric("Касса (факт)", f"{(p_rev - p_exp):,.0f} ₽")
 
     st.divider()
-
 
 # --- 6. РОУТИНГ (Запуск выбранной страницы) ---
 if page == "📅 Календарь":
