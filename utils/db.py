@@ -8,7 +8,13 @@ def init_db_connection(db_url):
     connect_args = {}
     if "postgresql" in db_url:
         connect_args = {"sslmode": "require", "keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 5}
-    return create_engine(db_url, pool_pre_ping=True, pool_recycle=300, pool_timeout=30, max_overflow=5, connect_args=connect_args)
+    
+    engine = create_engine(db_url, pool_pre_ping=True, pool_recycle=300, pool_timeout=30, max_overflow=5, connect_args=connect_args)
+    
+    # Инициализация таблиц выполняется ровно 1 раз при создании подключения
+    setup_tables(engine)
+    
+    return engine
 
 def setup_tables(engine):
     with engine.begin() as conn:
