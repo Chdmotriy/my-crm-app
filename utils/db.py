@@ -8,13 +8,7 @@ def init_db_connection(db_url):
     connect_args = {}
     if "postgresql" in db_url:
         connect_args = {"sslmode": "require", "keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 5}
-    
-    engine = create_engine(db_url, pool_pre_ping=True, pool_recycle=300, pool_timeout=30, max_overflow=5, connect_args=connect_args)
-    
-    # Инициализация таблиц выполняется ровно 1 раз при создании подключения
-    setup_tables(engine)
-    
-    return engine
+    return create_engine(db_url, pool_pre_ping=True, pool_recycle=300, pool_timeout=30, max_overflow=5, connect_args=connect_args)
 
 def setup_tables(engine):
     with engine.begin() as conn:
@@ -26,21 +20,18 @@ def setup_tables(engine):
         conn.execute(text("CREATE TABLE IF NOT EXISTS contract_templates (id SERIAL PRIMARY KEY, content TEXT)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS logs (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, action TEXT, details TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS properties (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, property_type TEXT, description TEXT, estimated_value NUMERIC, is_pledged BOOLEAN DEFAULT FALSE)"))
-        
-        # Уполномоченные органы и Каталог кредиторов
         conn.execute(text("CREATE TABLE IF NOT EXISTS authorized_bodies (id SERIAL PRIMARY KEY, name TEXT, address TEXT)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS creditor_catalog (id SERIAL PRIMARY KEY, name TEXT, address TEXT)"))
-
-        # Обновляем таблицу привязанных кредиторов
         conn.execute(text("CREATE TABLE IF NOT EXISTS creditors (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE, creditor_name TEXT, contract_info TEXT, debt_amount NUMERIC)"))
         conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS creditor_address TEXT"))
         conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS principal_debt NUMERIC DEFAULT 0"))
         conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS penalty_debt NUMERIC DEFAULT 0"))
         conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS contracts_info TEXT"))
 
-        # Обновляем клиента
+        # Обновляем клиента - добавил previous_names
         new_columns = {
             "last_name": "TEXT", "first_name": "TEXT", "patronymic": "TEXT",
+            "previous_names": "TEXT", # 👈 Новое поле
             "passport_series": "TEXT", "passport_issued_by": "TEXT",
             "birth_date": "DATE", "birth_place": "TEXT",
             "addr_zip": "TEXT", "addr_region": "TEXT", "addr_district": "TEXT", 
