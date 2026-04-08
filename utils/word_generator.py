@@ -28,15 +28,14 @@ def get_client_context(engine, client_id):
         ]
         full_address_string = ", ".join([str(p).strip() for p in address_components if p and str(p).strip()])
 
-        # 2. Формируем списки кредиторов для Word (Текстовые блоки + Обработка для таблицы)
+        # 2. Формируем списки кредиторов для Word
         creditors_header_lines = []
         creditors_body_lines = []
         total_debt = 0
         
-        formatted_creditors_list = [] # 👈 Список кредиторов специально для таблицы Word
+        formatted_creditors_list = []
 
         for idx, row in enumerate(creditors_df.to_dict('records'), 1):
-            # Извлекаем сырые данные
             c_name = row.get('creditor_name') or ""
             c_addr = row.get('creditor_address') or ""
             c_total = row.get('debt_amount') or 0
@@ -47,7 +46,6 @@ def get_client_context(engine, client_id):
             total_debt += c_total
             c_total_str = f"{c_total:,.2f}".replace(',', ' ')
             
-            # --- Блок для текста заявления (Шапка и Тело) ---
             if c_addr:
                 header_str = f"Кредитор {idx}: {c_name}\nАдрес: {c_addr}"
             else:
@@ -58,19 +56,14 @@ def get_client_context(engine, client_id):
             body_str = f"Требований Кредитора {idx} ({c_name}) в размере {c_total_str} рублей, которые в свою очередь вытекают из следующих заключенных договоров:\n{contracts_formatted}"
             creditors_body_lines.append(body_str)
             
-            # --- Блок для ТАБЛИЦЫ кредиторов (Форматируем данные) ---
-            # Создаем копию словаря кредитора, чтобы подменить сырые цифры на красивые строки
             c_dict_formatted = row.copy()
             c_dict_formatted['debt_amount'] = f"{c_total:,.2f}".replace(',', ' ')
             c_dict_formatted['principal_debt'] = f"{c_principal:,.2f}".replace(',', ' ')
             c_dict_formatted['penalty_debt'] = f"{c_penalty:,.2f}".replace(',', ' ')
-            
-            # Делаем переносы строк в договорах работающими внутри таблицы
             c_dict_formatted['contracts_info'] = RichText(c_contracts)
             
             formatted_creditors_list.append(c_dict_formatted)
 
-        # Склеиваем текстовые блоки
         final_creditors_header = "\n\n".join(creditors_header_lines)
         final_creditors_body = "\n\n".join(creditors_body_lines)
 
@@ -99,6 +92,17 @@ def get_client_context(engine, client_id):
             "auth_body_name": auth_body_name,
             "auth_body_address": auth_body_address,
             
+            # 👇 ВОТ ЭТИ ПОЛЯ МЫ ДОБАВИЛИ ДЛЯ ШАБЛОНА 👇
+            "addr_zip": client.get('addr_zip') or "",
+            "addr_region": client.get('addr_region') or "",
+            "addr_district": client.get('addr_district') or "",
+            "addr_city": client.get('addr_city') or "",
+            "addr_settlement": client.get('addr_settlement') or "",
+            "addr_street": client.get('addr_street') or "",
+            "addr_house": client.get('addr_house') or "",
+            "addr_corpus": client.get('addr_corpus') or "",
+            "addr_flat": client.get('addr_flat') or "",
+            
             "full_address": full_address_string,
             "current_date": datetime.now().strftime('%d.%m.%Y'),
             
@@ -106,9 +110,7 @@ def get_client_context(engine, client_id):
             "creditors_header_text": RichText(final_creditors_header) if final_creditors_header else "",
             "creditors_body_text": RichText(final_creditors_body) if final_creditors_body else "",
             
-            # Передаем наш обновленный, красивый список в таблицу Word
             "creditors": formatted_creditors_list,
-            
             "properties": props_df.to_dict('records')
         }
 
