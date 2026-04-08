@@ -72,6 +72,7 @@ def get_client_context(engine, client_id):
             "last_name": client.get('last_name') or "",
             "first_name": client.get('first_name') or "",
             "patronymic": client.get('patronymic') or "",
+            "previous_names": client.get('previous_names') or "", # 👈 Новый тег
             "phone": client.get('phone') or "",
             
             "passport_series": client.get('passport_series') or client.get('passport') or "",
@@ -82,7 +83,7 @@ def get_client_context(engine, client_id):
             "birth_date": client.get('birth_date').strftime('%d.%m.%Y') if client.get('birth_date') else "",
             "birth_place": client.get('birth_place') or "",
             "court_name": client.get('court_name') or "",
-            "sro_name": client.get('sro_name') or "",
+            "sro_info": client.get('sro_name') or "", # 👈 Новый тег (берет данные из поля SRO)
             "marital_status": client.get('marital_status') or "",
             "dependents": client.get('dependents') or 0,
             
