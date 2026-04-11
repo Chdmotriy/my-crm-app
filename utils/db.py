@@ -28,10 +28,9 @@ def setup_tables(engine):
         conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS penalty_debt NUMERIC DEFAULT 0"))
         conn.execute(text("ALTER TABLE creditors ADD COLUMN IF NOT EXISTS contracts_info TEXT"))
 
-        # Обновляем клиента - добавил previous_names
         new_columns = {
             "last_name": "TEXT", "first_name": "TEXT", "patronymic": "TEXT",
-            "previous_names": "TEXT", # 👈 Новое поле
+            "previous_names": "TEXT",
             "passport_series": "TEXT", "passport_issued_by": "TEXT",
             "birth_date": "DATE", "birth_place": "TEXT",
             "addr_zip": "TEXT", "addr_region": "TEXT", "addr_district": "TEXT", 
@@ -45,3 +44,20 @@ def setup_tables(engine):
         
         for col_name, col_type in new_columns.items():
             conn.execute(text(f"ALTER TABLE clients ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+
+        # 👇 НОВЫЙ БЛОК: ТАБЛИЦА ПРОФИЛЯ КОМПАНИИ 👇
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS company_profile (
+                id SERIAL PRIMARY KEY,
+                company_name TEXT,
+                requisites TEXT,
+                address TEXT,
+                phone TEXT,
+                email TEXT,
+                logo_data BYTEA
+            )
+        """))
+        # Если таблица пустая, создаем базовую запись по умолчанию
+        count = conn.execute(text("SELECT COUNT(*) FROM company_profile")).scalar()
+        if count == 0:
+            conn.execute(text("INSERT INTO company_profile (company_name, requisites, address) VALUES ('Чадов Дмитрий Вячеславович', 'паспорт серия 1808 №248570', 'г. Волгоград, ул. Шурухина, д.86/155')"))
