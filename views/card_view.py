@@ -366,12 +366,11 @@ def render(engine):
         st.subheader("🖨️ Печать конвертов и уведомлений")
         st.markdown("Выберите адресатов, и система сгенерирует файл сразу со всеми конвертами для печати.")
 
-        # Собираем всех возможных получателей для этого клиента
         mail_data = []
         
         # 1. Суд
         if c_info.get('court_name'):
-            mail_data.append({"Отправить": True, "Роль": "Суд", "Получатель": c_info.get('court_name'), "Адрес": "Адрес суда (введите или уточните)"})
+            mail_data.append({"Отправить": True, "Роль": "Суд", "Получатель": c_info.get('court_name'), "Адрес": ""})
         
         # 2. Уполномоченный орган
         ab_name = next((ab['name'] for ab in auth_bodies_list if ab['id'] == c_info.get('auth_body_id')), None)
@@ -388,7 +387,6 @@ def render(engine):
         if not mail_data:
             st.info("У клиента пока нет прикрепленных кредиторов, суда или госорганов.")
         else:
-            # Интерактивная таблица для выбора получателей
             mail_df = pd.DataFrame(mail_data)
             edited_mail_df = st.data_editor(
                 mail_df, 
@@ -399,39 +397,33 @@ def render(engine):
             
             st.divider()
             
-            # Выбор отправителя (Сам должник или твоя Компания)
             sender_type = st.radio("Отправитель (в левом верхнем углу):", ["Сам должник (Клиент)", "Представитель (Моя компания)"], horizontal=True)
             
             if sender_type == "Сам должник (Клиент)":
                 s_name = c_info.get('name')
-                s_address = get_client_context(engine, c_id)["full_address"] # Берем готовый склеенный адрес
+                s_address = get_client_context(engine, c_id)["full_address"]
             else:
                 with engine.connect() as conn:
                     comp = conn.execute(text("SELECT company_name, address FROM company_profile LIMIT 1")).fetchone()
-                s_name = comp[0] if comp else "Название компании не указано"
-                s_address = comp[1] if comp else "Адрес не указан"
+                s_name = comp[0] if comp else "Имя компании"
+                s_address = comp[1] if comp else "Адрес компании"
 
-            # Кнопки генерации
             col_m1, col_m2 = st.columns(2)
             
             with col_m1:
                 if st.button("✉️ Сгенерировать Конверты", use_container_width=True, type="primary"):
-                    # Импортируем нашу новую функцию локально
                     from utils.word_generator import generate_mail_batch
                     doc_bytes = generate_mail_batch("templates/envelope.docx", s_name, s_address, edited_mail_df)
-                    
                     if doc_bytes:
-                        st.download_button("📥 Скачать файл с конвертами", data=doc_bytes, file_name=f"Конверты_{c_info.get('last_name')}.docx")
+                        st.download_button("📥 Скачать Конверты", data=doc_bytes, file_name=f"Конверты_{c_info.get('last_name')}.docx")
                     else:
-                        st.error("Не выбран ни один адресат или не найден шаблон templates/envelope.docx")
+                        st.error("Ошибка генерации или не найден шаблон templates/envelope.docx")
 
             with col_m2:
                 if st.button("📄 Сгенерировать Уведомления (ф.119)", use_container_width=True):
                     from utils.word_generator import generate_mail_batch
                     doc_bytes = generate_mail_batch("templates/form_119.docx", s_name, s_address, edited_mail_df)
-                    
                     if doc_bytes:
-                        st.download_button("📥 Скачать файл с уведомлениями", data=doc_bytes, file_name=f"Уведомления_{c_info.get('last_name')}.docx")
+                        st.download_button("📥 Скачать ф.119", data=doc_bytes, file_name=f"Уведомления_{c_info.get('last_name')}.docx")
                     else:
-                        st.error("Не выбран ни один адресат или не найден шаблон templates/form_119.docx")
-            
+                        st.error("Ошибка генерации или не найден шаблон templates/form_119.docx")
