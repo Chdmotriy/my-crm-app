@@ -1,6 +1,6 @@
-import re
 import io
 import os
+import re
 import pandas as pd
 from sqlalchemy import text
 from docxtpl import DocxTemplate, RichText
@@ -73,7 +73,7 @@ def get_client_context(engine, client_id):
             "last_name": client.get('last_name') or "",
             "first_name": client.get('first_name') or "",
             "patronymic": client.get('patronymic') or "",
-            "previous_names": client.get('previous_names') or "", # 👈 Новый тег
+            "previous_names": client.get('previous_names') or "",
             "phone": client.get('phone') or "",
             
             "passport_series": client.get('passport_series') or client.get('passport') or "",
@@ -84,7 +84,7 @@ def get_client_context(engine, client_id):
             "birth_date": client.get('birth_date').strftime('%d.%m.%Y') if client.get('birth_date') else "",
             "birth_place": client.get('birth_place') or "",
             "court_name": client.get('court_name') or "",
-            "sro_info": client.get('sro_name') or "", # 👈 Новый тег (берет данные из поля SRO)
+            "sro_info": client.get('sro_name') or "",
             "marital_status": client.get('marital_status') or "",
             "dependents": client.get('dependents') or 0,
             
@@ -94,7 +94,6 @@ def get_client_context(engine, client_id):
             "auth_body_name": auth_body_name,
             "auth_body_address": auth_body_address,
             
-            # 👇 ВОТ ЭТИ ПОЛЯ МЫ ДОБАВИЛИ ДЛЯ ШАБЛОНА 👇
             "addr_zip": client.get('addr_zip') or "",
             "addr_region": client.get('addr_region') or "",
             "addr_district": client.get('addr_district') or "",
@@ -124,35 +123,8 @@ def generate_word_document(template_path, context):
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
 def generate_mail_batch(template_path, sender_name, sender_address, recipients_df):
-    """Генерирует пачку конвертов или уведомлений на основе выбранных получателей."""
-    if not os.path.exists(template_path):
-        return None
-    
-    # Собираем список только тех, кого отметили галочкой
-    selected_recipients = []
-    for _, row in recipients_df.iterrows():
-        if row.get("Отправить", False):  # Проверяем, стоит ли галочка
-            selected_recipients.append({
-                "name": row["Получатель"],
-                "address": row["Адрес"]
-            })
-            
-    if not selected_recipients:
-        return None # Если никто не выбран, не генерируем
-        
-    doc = DocxTemplate(template_path)
-    context = {
-        "sender_name": sender_name,
-        "sender_address": sender_address,
-        "recipients": selected_recipients
-    }
-    
-    doc.render(context)
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    return buffer.getvalue()
-    def generate_mail_batch(template_path, sender_name, sender_address, recipients_df):
     """Генерирует пачку конвертов или уведомлений на основе выбранных получателей."""
     if not os.path.exists(template_path):
         return None
@@ -178,9 +150,6 @@ def generate_mail_batch(template_path, sender_name, sender_address, recipients_d
     if not selected_recipients:
         return None
         
-    from docxtpl import DocxTemplate
-    import io
-    
     doc = DocxTemplate(template_path)
     context = {
         "sender_name": sender_name,
