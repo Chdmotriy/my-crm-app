@@ -1,4 +1,5 @@
 import os
+import io
 from io import BytesIO
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -12,11 +13,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import streamlit as st
 
-# Константы компании можно позже вынести в config.py
-COMPANY_NAME = "Чадов Дмитрий Вячеславович"
-COMPANY_PASSPORT = "паспорт серия 1808 №248570"
-COMPANY_ADDRESS = "г. Волгоград, ул. Шурухина, д.86/155"
-
 def render_template(text, client_info):
     """Подставляет данные клиента в текст договора."""
     if not text:
@@ -27,11 +23,11 @@ def render_template(text, client_info):
         .replace("{address}", str(client_info[8] or "")) \
         .replace("{amount}", f"{client_info[4]:,.0f}")
 
-def draw_page(canvas, doc):
+def draw_page(canvas, doc, comp_name):
     """Отрисовка колонтитулов и водяных знаков на каждой странице."""
     canvas.saveState()
     canvas.setFont("DejaVu", 9)
-    canvas.drawString(40, 800, COMPANY_NAME)
+    canvas.drawString(40, 800, comp_name)
     
     page_num = canvas.getPageNumber()
     canvas.drawRightString(550, 20, f"Стр. {page_num}")
@@ -48,13 +44,11 @@ def draw_page(canvas, doc):
     canvas.drawRightString(550, 60, "Заказчик: ____________________")
     canvas.restoreState()
 
-def generate_contract_pdf(client_info, payments, contract_text):
-    """Генерирует PDF-файл договора на основе переданного текста."""
+def generate_contract_pdf(client_info, payments, contract_text, company_profile):
+    """Генерирует PDF-файл договора с динамическим профилем компании."""
     font_path = "DejaVuSans.ttf"
     if os.path.exists(font_path):
         pdfmetrics.registerFont(TTFont('DejaVu', font_path))
-    else:
-        st.warning("Шрифт DejaVuSans.ttf не найден! В PDF могут быть проблемы с кириллицей.")
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -71,9 +65,22 @@ def generate_contract_pdf(client_info, payments, contract_text):
     today = datetime.now().strftime("%d.%m.%Y")
     contract_no = client_info[2] or f"AUTO-{datetime.now().strftime('%Y%m%d%H%M')}"
 
-    # Шапка
+    # Достаем данные компании из словаря (или ставим заглушки, если пустые)
+    c_name = company_profile.get('company_name') or "Исполнитель"
+    c_req = company_profile.get('requisites') or "реквизиты не указаны"
+    c_addr = company_profile.get('address') or "адрес не указан"
+
+    # Шапка и ЛОГОТИП
     header_text = Paragraph(f"<b>ДОГОВОР № {contract_no}</b><br/>от {today}", right)
-    header_table = Table([["", header_text]], colWidths=[150, 300]) # Логотип пока убрал для надежности, можно вернуть Image()
+    
+    # Проверяем, есть ли логотип в базе
+    logo_data = company_profile.get('logo_data')
+    if logo_data:
+        logo_img = Image(io.BytesIO(logo_data), width=120, height=60) # Фиксируем размер логотипа
+        header_table = Table([[logo_img, header_text]], colWidths=[150, 300])
+    else:
+        header_table = Table([["", header_text]], colWidths=[150, 300])
+
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
@@ -85,17 +92,16 @@ def generate_contract_pdf(client_info, payments, contract_text):
     elements.append(Paragraph(f"г. Волгоград, {today}", normal))
     elements.append(Spacer(1, 15))
 
-    # Вводная часть
+    # Вводная часть с подстановкой компании
     intro = f"""
     <b>{client_info[0]}</b>, паспорт: {client_info[5] or '—'}, зарегистрированный по адресу:
     {client_info[8] or '—'}, именуемый «Заказчик», с одной стороны, и
-    <b>{COMPANY_NAME}</b>, {COMPANY_PASSPORT}, адрес: {COMPANY_ADDRESS},
+    <b>{c_name}</b>, {c_req}, адрес: {c_addr},
     именуемый «Исполнитель», с другой стороны, заключили настоящий договор:
     """
     elements.append(Paragraph(intro, normal))
     elements.append(Spacer(1, 12))
 
-    # Парсинг HTML из базы
     if contract_text and contract_text.strip():
         rendered_text = render_template(contract_text, client_info)
         soup = BeautifulSoup(rendered_text, "html.parser")
@@ -106,7 +112,6 @@ def generate_contract_pdf(client_info, payments, contract_text):
 
     elements.append(PageBreak())
 
-    # Приложение: График платежей
     elements.append(Paragraph("Приложение №1", title))
     elements.append(Paragraph("График платежей", bold))
     elements.append(Spacer(1, 10))
@@ -126,7 +131,9 @@ def generate_contract_pdf(client_info, payments, contract_text):
     ]))
     
     elements.append(table)
-    doc.build(elements, onFirstPage=draw_page, onLaterPages=draw_page)
+    
+    # Передаем название компании для колонтитулов
+    doc.build(elements, onFirstPage=lambda cv, doc: draw_page(cv, doc, c_name), onLaterPages=lambda cv, doc: draw_page(cv, doc, c_name))
     
     pdf = buffer.getvalue()
     buffer.close()
