@@ -123,3 +123,31 @@ def generate_word_document(template_path, context):
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+def generate_mail_batch(template_path, sender_name, sender_address, recipients_df):
+    """Генерирует пачку конвертов или уведомлений на основе выбранных получателей."""
+    if not os.path.exists(template_path):
+        return None
+    
+    # Собираем список только тех, кого отметили галочкой
+    selected_recipients = []
+    for _, row in recipients_df.iterrows():
+        if row.get("Отправить", False):  # Проверяем, стоит ли галочка
+            selected_recipients.append({
+                "name": row["Получатель"],
+                "address": row["Адрес"]
+            })
+            
+    if not selected_recipients:
+        return None # Если никто не выбран, не генерируем
+        
+    doc = DocxTemplate(template_path)
+    context = {
+        "sender_name": sender_name,
+        "sender_address": sender_address,
+        "recipients": selected_recipients
+    }
+    
+    doc.render(context)
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
