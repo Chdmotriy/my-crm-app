@@ -258,6 +258,10 @@ def render(engine):
                 with engine.connect() as conn:
                     tpl = conn.execute(text("SELECT content FROM contract_templates LIMIT 1")).fetchone()
                     contract_text = tpl[0] if tpl else ""
+                    
+                    # 👇 ДОБАВЛЯЕМ ЭТОТ ЗАПРОС ПРОФИЛЯ 👇
+                    comp_row = conn.execute(text("SELECT * FROM company_profile LIMIT 1")).fetchone()
+                    comp_profile = comp_row._mapping if comp_row else {}
                 
                 old_c_info = (
                     c_info.get('name', ''), c_info.get('phone', ''), c_info.get('contract_no', ''),
@@ -265,7 +269,10 @@ def render(engine):
                     c_info.get('passport_series', ''), c_info.get('snils', ''), 
                     c_info.get('inn', ''), c_info.get('addr_city', '')
                 )
-                pdf_file = generate_contract_pdf(old_c_info, curr_payments, contract_text)
+                
+                # 👇 ПЕРЕДАЕМ ПРОФИЛЬ В ГЕНЕРАТОР 👇
+                pdf_file = generate_contract_pdf(old_c_info, curr_payments, contract_text, comp_profile)
+                
                 st.download_button("📥 Скачать PDF договор", data=pdf_file, file_name=f"contract_{c_info.get('last_name')}.pdf", mime="application/pdf")
 
     # --- Вкладка 4: Кредиторы ---
