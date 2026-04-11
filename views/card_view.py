@@ -5,7 +5,7 @@ from datetime import datetime, date
 
 from utils.ocr_engine import process_document_image
 from utils.pdf_generator import generate_contract_pdf
-from utils.word_generator import get_client_context, generate_word_document
+from utils.word_generator import get_client_context, generate_word_document, generate_mail_batch
 
 def render(engine):
     st.subheader("🔍 Карточка клиента")
@@ -34,6 +34,7 @@ def render(engine):
     c3.metric("💰 Сумма", f"{c_info.get('total_amount') or 0:,.0f} ₽")
     st.divider()
     
+    # 👇 ВОТ ЗДЕСЬ ДОБАВЛЕНА 6-Я ВКЛАДКА tab_mail 👇
     tab_main, tab_docs, tab_fin, tab_cred, tab_prop, tab_mail = st.tabs(["📝 Данные", "📎 Документы", "💳 Финансы", "🏦 Кредиторы", "🏠 Имущество", "✉️ Почта"])
 
     # --- Вкладка 1: Данные ---
@@ -259,7 +260,6 @@ def render(engine):
                     tpl = conn.execute(text("SELECT content FROM contract_templates LIMIT 1")).fetchone()
                     contract_text = tpl[0] if tpl else ""
                     
-                    # 👇 ДОБАВЛЯЕМ ЭТОТ ЗАПРОС ПРОФИЛЯ 👇
                     comp_row = conn.execute(text("SELECT * FROM company_profile LIMIT 1")).fetchone()
                     comp_profile = comp_row._mapping if comp_row else {}
                 
@@ -270,7 +270,6 @@ def render(engine):
                     c_info.get('inn', ''), c_info.get('addr_city', '')
                 )
                 
-                # 👇 ПЕРЕДАЕМ ПРОФИЛЬ В ГЕНЕРАТОР 👇
                 pdf_file = generate_contract_pdf(old_c_info, curr_payments, contract_text, comp_profile)
                 
                 st.download_button("📥 Скачать PDF договор", data=pdf_file, file_name=f"contract_{c_info.get('last_name')}.pdf", mime="application/pdf")
@@ -361,6 +360,7 @@ def render(engine):
                     with engine.begin() as conn: conn.execute(text("DELETE FROM properties WHERE id = :id"), {"id": row['id']})
                     st.rerun()
         else: st.write("Имущество пока не добавлено.")
+
     # --- Вкладка 6: Почта и конверты ---
     with tab_mail:
         st.subheader("🖨️ Печать конвертов и уведомлений")
@@ -412,7 +412,6 @@ def render(engine):
             
             with col_m1:
                 if st.button("✉️ Сгенерировать Конверты", use_container_width=True, type="primary"):
-                    from utils.word_generator import generate_mail_batch
                     doc_bytes = generate_mail_batch("templates/envelope.docx", s_name, s_address, edited_mail_df)
                     if doc_bytes:
                         st.download_button("📥 Скачать Конверты", data=doc_bytes, file_name=f"Конверты_{c_info.get('last_name')}.docx")
@@ -421,7 +420,6 @@ def render(engine):
 
             with col_m2:
                 if st.button("📄 Сгенерировать Уведомления (ф.119)", use_container_width=True):
-                    from utils.word_generator import generate_mail_batch
                     doc_bytes = generate_mail_batch("templates/form_119.docx", s_name, s_address, edited_mail_df)
                     if doc_bytes:
                         st.download_button("📥 Скачать ф.119", data=doc_bytes, file_name=f"Уведомления_{c_info.get('last_name')}.docx")
