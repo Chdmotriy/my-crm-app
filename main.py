@@ -8,7 +8,7 @@ from utils.db import init_db_connection
 # Импорт всех страниц интерфейса
 from views import (
     calendar_view, analytics_view, registry_view, 
-    card_view, new_deal_view, template_view
+    card_view, new_deal_view, template_view, profile_view
 )
 
 # --- 1. БАЗОВЫЕ НАСТРОЙКИ ---
@@ -107,10 +107,10 @@ with st.sidebar:
         st.session_state.current_page = "📅 Календарь"
 
     page = st.radio(
-        "📌 Главное меню",
-        ["📅 Календарь", "📈 Аналитика", "📋 Реестр", "🔍 Карточка", "➕ Новая сделка", "📄 Шаблон договора"],
-        key="current_page"
-    )
+         "📌 Главное меню",
+         ["📅 Календарь", "📈 Аналитика", "📋 Реестр", "🔍 Карточка", "➕ Новая сделка", "📄 Шаблон договора", "🏢 Профиль"], # 👈 ДОБАВИЛИ "🏢 Профиль"
+         key="current_page"
+     )
     
     # Умные алерты (Должники)
     st.divider()
@@ -162,3 +162,7 @@ elif page == "➕ Новая сделка":
     new_deal_view.render(engine)
 elif page == "📄 Шаблон договора":
     template_view.render(engine)
+elif page == "📄 Шаблон договора":
+    template_view.render(engine)
+elif page == "🏢 Профиль":           # 👈 ДОБАВИЛИ ЭТИ ДВЕ СТРОКИ
+    profile_view.render(engine)
