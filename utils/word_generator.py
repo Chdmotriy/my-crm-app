@@ -1,3 +1,4 @@
+import re
 import io
 import os
 import pandas as pd
@@ -144,6 +145,47 @@ def generate_mail_batch(template_path, sender_name, sender_address, recipients_d
     context = {
         "sender_name": sender_name,
         "sender_address": sender_address,
+        "recipients": selected_recipients
+    }
+    
+    doc.render(context)
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+    def generate_mail_batch(template_path, sender_name, sender_address, recipients_df):
+    """Генерирует пачку конвертов или уведомлений на основе выбранных получателей."""
+    if not os.path.exists(template_path):
+        return None
+    
+    # Умная функция для поиска 6 цифр (индекса) в строке адреса
+    def extract_zip(addr):
+        match = re.search(r'\b\d{6}\b', str(addr))
+        return match.group(0) if match else ""
+
+    # Индекс отправителя
+    sender_zip = extract_zip(sender_address)
+    
+    selected_recipients = []
+    for _, row in recipients_df.iterrows():
+        if row.get("Отправить", False):
+            r_addr = row["Адрес"]
+            selected_recipients.append({
+                "name": row["Получатель"],
+                "address": r_addr,
+                "zip": extract_zip(r_addr)
+            })
+            
+    if not selected_recipients:
+        return None
+        
+    from docxtpl import DocxTemplate
+    import io
+    
+    doc = DocxTemplate(template_path)
+    context = {
+        "sender_name": sender_name,
+        "sender_address": sender_address,
+        "sender_zip": sender_zip,
         "recipients": selected_recipients
     }
     
