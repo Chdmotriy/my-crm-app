@@ -39,7 +39,9 @@ def render(engine):
     with col_logo:
         st.markdown("#### 🖼️ Логотип для документов")
         if profile.get('logo_data'):
-            st.image(profile.get('logo_data'), use_container_width=True, caption="Текущий логотип")
+            # 👇 Конвертируем memoryview в обычные байты 👇
+            logo_bytes = bytes(profile.get('logo_data'))
+            st.image(logo_bytes, use_container_width=True, caption="Текущий логотип")
             if st.button("🗑️ Удалить логотип"):
                 with engine.begin() as conn:
                     conn.execute(text("UPDATE company_profile SET logo_data = NULL"))
